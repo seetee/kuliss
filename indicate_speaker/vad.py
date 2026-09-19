@@ -37,7 +37,9 @@ def decode(path: str, stream: int, start: float, dur: float) -> np.ndarray:
     except av.FFmpegError as e:
         die(f"cannot decode {path}: {e}")
     pcm = np.concatenate(chunks) if chunks else np.zeros(0, np.float32)
-    skip = max(0, round((start - (first or start)) * RATE))
+    # the seek can land anywhere at or before start, including pts 0 (one big
+    # cluster), so trim from where decoding actually began
+    skip = max(0, round((start - (start if first is None else first)) * RATE))
     return pcm[skip:skip + round(dur * RATE)]
 
 

@@ -148,6 +148,29 @@ def test_canvas_matches_frame_aspect():
         assert (x + w, y + h) == (1920 - theme.margin, 1080 - theme.margin)
 
 
+def test_decode_trims_from_the_asked_start(tmp_path):
+    """A seek can land at pts 0; decode must still return the asked window."""
+    import av
+    from fractions import Fraction
+    sr, n = 48000, 48000 * 6
+    ts = np.arange(n) / sr
+    pcm = (0.3 * np.sin(2 * np.pi * 440 * ts) * (ts >= 3)).astype(np.float32)   # tone from 3 s
+    path = tmp_path / "voice.mkv"
+    with av.open(str(path), "w") as c:
+        st = c.add_stream("pcm_s16le", rate=sr, layout="mono")
+        for i in range(0, n, 4800):
+            f = av.AudioFrame.from_ndarray((pcm[i:i + 4800] * 32767).astype(np.int16)[None, :],
+                                           format="s16", layout="mono")
+            f.sample_rate, f.pts, f.time_base = sr, i, Fraction(1, sr)
+            c.mux(st.encode(f))
+        c.mux(st.encode(None))
+
+    loud = vad.decode(str(path), 0, 3.0, 2.0)
+    quiet = vad.decode(str(path), 0, 0.0, 2.0)
+    assert len(loud) == 2 * vad.RATE and np.abs(loud).mean() > 0.1
+    assert np.abs(quiet).max() < 0.01
+
+
 def test_vad_smoothing():
     hang = round(vad.HANGOVER * vad.RATE / vad.WINDOW)
     probs = np.zeros(100)

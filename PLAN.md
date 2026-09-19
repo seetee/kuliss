@@ -23,9 +23,8 @@ What's left from the code review of 2026-09-18. Everything else from that review
 - [ ] README: replace `git clone … &&` with `https://github.com/seetee/indicate-speaker.git`.
 - [ ] Commit `uv.lock` (remove it from `.gitignore`) so installs get the tested versions.
 - [ ] GitHub Actions: `uv run pytest` on the latest versions, plus `uv run --resolution lowest-direct pytest` to keep the minimum versions honest (they were verified by hand on 2026-09-18), plus `ruff check`.
-- [ ] `pyproject.toml`: `readme`, `authors`, project URLs and classifiers; add `--version` to the CLI.
+- [ ] `pyproject.toml`: `requires-python = ">=3.12"` (numpy 2.5 dropped 3.11, so 3.11 pins us to numpy 2.4.x); then `readme`, `authors`, project URLs and classifiers; add `--version` to the CLI.
 - [ ] Privacy: use generic player names and paths in `CLAUDE.md`, `theme.example.toml` and the tests, instead of the crew's names and `~/documents/samkvam.online`/`~/bin/gearlever_*`.
-- [ ] Tests: audio decoding with a small generated file (seek and trim alignment of `vad.decode`).
 
 ## Future options (only if needed)
 

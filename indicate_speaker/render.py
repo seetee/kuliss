@@ -14,6 +14,7 @@ qtblend rect of the same size; no scaling maths in Kdenlive.
 
 import math
 import os
+import sys
 from dataclasses import dataclass
 from fractions import Fraction
 from pathlib import Path
@@ -115,6 +116,9 @@ def layout(theme: Theme, frame_w: int, frame_h: int) -> Layout:
     aw, ah = frame_w // g, frame_h // g
     k = math.ceil(max(pw / aw, ph / ah))
     W, H = aw * k, ah * k
+    if W > frame_w or H > frame_h:
+        print(f"WARNING: the overlay needs {W}x{H} px, more than the {frame_w}x{frame_h} frame; "
+              "lower avatar_size or use fewer players", file=sys.stderr)
     px = {"left": 0, "center": (W - pw) / 2, "right": W - pw}[h]
     py = {"top": 0, "middle": (H - ph) / 2, "bottom": H - ph}[v]
     if vertical:
@@ -291,6 +295,8 @@ def render(painter: Painter, codec: str, spans, talking, fps: float, n: int, out
     rate = Fraction(fps).limit_denominator(1001)
     tmp = out.with_name(out.name + ".partial")
     cache: dict = {}
+    # steady states repeat, ramps are short-lived: keep ~64 MB of them, whatever the canvas size
+    cap = max(16, 64_000_000 // (painter.lay.W * painter.lay.H * 4))
     try:
         with av.open(str(tmp), "w", format=container) as box:
             st = box.add_stream(codec, rate=rate)
@@ -299,7 +305,7 @@ def render(painter: Painter, codec: str, spans, talking, fps: float, n: int, out
             for f, state in enumerate(frame_states(spans, talking, fps, n)):
                 img = cache.get(state)
                 if img is None:
-                    if len(cache) > 256:   # steady states repeat; ramps are short-lived
+                    if len(cache) > cap:
                         cache.clear()
                     img = cache[state] = painter.draw(*state)
                 frame = av.VideoFrame.from_ndarray(img, format="bgra")
