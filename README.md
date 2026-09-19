@@ -45,7 +45,7 @@ Running it again after you re-edit reuses the same tracks and clips and regenera
 Copy [`theme.example.toml`](theme.example.toml) to `theme.toml` next to the project, or into a folder above it such as the season folder; the nearest one wins. Keep one theme per game.
 
 - `position` picks a corner (`top-left`, `top-right`, `bottom-left`, `bottom-right`) or an edge centre (`top`, `bottom`, `left`, `right`). `margin` is the distance from the edges the bar sits against, and `offset = [x, y]` nudges it from there in pixels (positive = right/down). For example, `position = "left"` with `offset = [0, -100]` centres the bar on the left edge, 100 px above the middle.
-- `orientation = "horizontal"` (the default) draws a row with the name under the viewed avatar. `"vertical"` draws a column along the frame edge with the name beside the viewed avatar, pointing into the picture.
+- `orientation = "horizontal"` (the default) draws a row, `"vertical"` a column along the frame edge. The name label sits under the viewed avatar either way; the column spaces the avatars out to leave room for it.
 
 - `voice_track` is the name of the Kdenlive **audio track** holding that player's voice; it defaults to the player's name. The tool uses the audio stream and the cuts you chose on that track.
 - Video clips from the same file as that voice track count as the player's view, whichever video track they sit on. Set `source` only when someone's view is recorded in a different file. It takes a file-name pattern such as `"*_h.mkv"`, or a list of them.

@@ -1,7 +1,7 @@
 """The overlay: a backdrop panel with one avatar per player.
 
-- whose view we watch: that avatar is enlarged and gets a name label in the
-  player's colour; on a cut the label slides over, blending colour, and the
+- whose view we watch: that avatar is enlarged and gets a name label under it
+  in the player's colour; on a cut the label slides over, blending colour, and the
   avatars re-size;
 - who is talking: a ring in the player's colour plus a small badge with sound
   bars (so it never relies on colour alone), faded in and out;
@@ -69,7 +69,6 @@ class Layout:
     V: int                 # avatar size, viewed
     slots: tuple[tuple[float, float], ...]    # avatar centre per player
     labels: tuple[tuple[float, float], ...]   # name label anchor per player: (x, top)
-    align: str             # label x anchor is its "center", "left" or "right" edge
     label_h: float
     font_size: int
 
@@ -92,44 +91,39 @@ def load_image(path: Path, what: str) -> skia.Image:
 
 
 def layout(theme: Theme, frame_w: int, frame_h: int) -> Layout:
-    """Horizontal: a row of avatars, the name label under the viewed one.
-    Vertical: a column of avatars along the frame edge, the label beside the
-    viewed one, pointing into the picture."""
+    """A row of avatars ("horizontal") or a column along the frame edge
+    ("vertical"), with the name label under the viewed avatar either way."""
     n, S = len(theme.players), theme.avatar_size
     V = round(S * 1.25)
     gap, pad = max(4, S // 4), max(6, S // 4)
     font_size = max(11, round(S / 3))
     label_h = round(font_size * 1.7)
     h, v = anchor(theme.position)
-    right = h == "right"
-    run = [pad + V / 2 + i * (V + gap) for i in range(n)]   # centres along the bar
     font = load_font(theme, font_size)
     label_w = max(font.measureText(p.name) for p in theme.players) + label_h
-    row = 2 * pad + n * V + (n - 1) * gap
-    if theme.orientation == "vertical":
-        pw = pad + V + gap + label_w + pad
-        ph = row
+    vertical = theme.orientation == "vertical"
+    cell = V + gap // 2 + label_h if vertical else V   # a column leaves label room per avatar
+    run = [pad + V / 2 + i * (cell + gap) for i in range(n)]   # avatar centres along the bar
+    bar = 2 * pad + n * cell + (n - 1) * gap
+    if vertical:
+        pw, ph = max(2 * pad + V, label_w + 8), bar
     else:
-        pw = max(row, label_w + 8)       # the label is kept 4 px inside the panel
+        pw = max(bar, label_w + 8)       # the label is kept 4 px inside the panel
         ph = pad + V + gap // 2 + label_h + pad
-        run = [x + (pw - row) / 2 for x in run]   # centre the avatars in a wider panel
+        run = [x + (pw - bar) / 2 for x in run]   # centre the avatars in a wider panel
     g = math.gcd(frame_w, frame_h)
     aw, ah = frame_w // g, frame_h // g
     k = math.ceil(max(pw / aw, ph / ah))
     W, H = aw * k, ah * k
     px = {"left": 0, "center": (W - pw) / 2, "right": W - pw}[h]
     py = {"top": 0, "middle": (H - ph) / 2, "bottom": H - ph}[v]
-    if theme.orientation == "vertical":
-        cx = px + pw - pad - V / 2 if right else px + pad + V / 2
-        slots = tuple((cx, py + y) for y in run)
-        edge = cx - V / 2 - gap if right else cx + V / 2 + gap
-        labels = tuple((edge, y - label_h / 2) for _, y in slots)
-        align = "right" if right else "left"
+    if vertical:
+        slots = tuple((px + pw / 2, py + y) for y in run)
+        labels = tuple((x, y + V / 2 + gap // 2) for x, y in slots)
     else:
         slots = tuple((px + x, py + pad + V / 2) for x in run)
         labels = tuple((x, py + pad + V + gap // 2) for x, _ in slots)
-        align = "center"
-    return Layout(W, H, skia.Rect.MakeXYWH(px, py, pw, ph), S, V, slots, labels, align,
+    return Layout(W, H, skia.Rect.MakeXYWH(px, py, pw, ph), S, V, slots, labels,
                   label_h, font_size)
 
 
@@ -254,8 +248,8 @@ class Painter:
         wa, wb = (self.font.measureText(p.name) + lay.label_h for p in (pa, pb))
         w = wa + (wb - wa) * e
         (ax, ay), (bx, by) = lay.labels[a], lay.labels[b]
-        anchor, top = ax + (bx - ax) * e, ay + (by - ay) * e
-        x = {"center": anchor - w / 2, "left": anchor, "right": anchor - w}[lay.align]
+        cx, top = ax + (bx - ax) * e, ay + (by - ay) * e
+        x = cx - w / 2
         x = min(max(x, lay.panel.left() + 4), lay.panel.right() - 4 - w)
         box = skia.Rect.MakeXYWH(x, top, w, lay.label_h)
         c.drawRRect(skia.RRect.MakeRectXY(box, lay.label_h / 2, lay.label_h / 2),
