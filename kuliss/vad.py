@@ -1,11 +1,15 @@
 """Who is talking: Silero VAD over each player's voice clips, as edited."""
 
+from typing import TYPE_CHECKING
+
 import av
 import numpy as np
 from silero_vad_lite import SileroVAD
 
 from .config import die
-from .timeline import Entry
+
+if TYPE_CHECKING:  # decode/speech_windows stay Kdenlive-free for Klatch
+    from .timeline import Entry
 
 RATE = 16000
 WINDOW = 512        # samples per Silero call at 16 kHz (32 ms)
@@ -73,7 +77,7 @@ def speech_windows(pcm: np.ndarray) -> np.ndarray:
 # ponytail: no cross-track bleed check; each player has their own mic track.
 # Add one (compare simultaneous windows' RMS across players) if a crew member
 # starts using speakers instead of headphones.
-def talking(entries: list[Entry], fps: float, length: int) -> np.ndarray:
+def talking(entries: list["Entry"], fps: float, length: int) -> np.ndarray:
     """Per timeline frame: is this player talking?"""
     out = np.zeros(length, bool)
     for e in entries:

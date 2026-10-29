@@ -285,7 +285,7 @@ def frame_states(spans, talking: list[np.ndarray], fps: float, n: int):
     for f in range(n):
         yield (round(float(vis[f]), 3), int(before[f]), int(shown[f]),
                round(min(since[f] / (FADE * fps), 1.0), 3),
-               tuple(round(float(l[f]), 2) for l in levels))
+               tuple(round(float(lv[f]), 2) for lv in levels))
 
 
 def render(painter: Painter, codec: str, spans, talking, fps: float, n: int, out: Path,

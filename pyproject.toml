@@ -1,8 +1,11 @@
 [project]
-name = "indicate-speaker"
-version = "2.0.0"
-description = "Adds a who-we-are-watching / who-is-talking overlay to a Kdenlive project"
+name = "kuliss"
+version = "3.0.0"
+description = "Kdenlive tools for Samkväm: speaker overlay, session notes, YouTube chapters"
+readme = "README.md"
 license = "AGPL-3.0-or-later"
+license-files = ["LICENSE"]
+authors = [{ name = "seetee" }]
 requires-python = ">=3.11"
 dependencies = [
     "numpy>=2",
@@ -11,8 +14,11 @@ dependencies = [
     "silero-vad-lite>=0.2",
 ]
 
+[project.urls]
+Repository = "https://github.com/seetee/kuliss"
+
 [project.scripts]
-indicate-speaker = "indicate_speaker.__main__:main"
+kuliss = "kuliss.__main__:main"
 
 [dependency-groups]
 dev = ["pytest>=8"]
@@ -20,3 +26,6 @@ dev = ["pytest>=8"]
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 100

@@ -1,6 +1,6 @@
-"""indicate-speaker: add a who-we-watch / who-talks overlay to a Kdenlive project.
+"""kuliss speaker: add a who-we-watch / who-talks overlay to a Kdenlive project.
 
-    indicate-speaker PROJECT.kdenlive [--theme theme.toml] [--dry-run] [--preview SECS]
+    kuliss speaker PROJECT.kdenlive [--theme theme.toml] [--dry-run] [--preview SECS]
 
 The theme is found next to the project or in any folder above it.
 """
@@ -116,7 +116,7 @@ def positive(text: str) -> float:
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(prog="indicate-speaker", description=__doc__.split("\n")[0])
+    ap = argparse.ArgumentParser(prog="kuliss speaker", description=__doc__.split("\n")[0])
     ap.add_argument("project", help="the .kdenlive project to update in place")
     ap.add_argument("--theme", help="theme TOML (default: theme.toml next to or above the project)")
     ap.add_argument("--dry-run", action="store_true", help="analyse and report; write nothing")
@@ -130,6 +130,3 @@ def main(argv=None) -> int:
         return 1
     return 0
 
-
-if __name__ == "__main__":
-    sys.exit(main())

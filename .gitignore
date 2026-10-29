@@ -1,4 +1,7 @@
 .claude/settings.local.json
 __pycache__/
+*.pyc
 .venv/
 uv.lock
+build/
+dist/

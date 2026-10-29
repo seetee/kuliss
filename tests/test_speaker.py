@@ -6,9 +6,12 @@ from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
+import pytest
+import skia
 
-from indicate_speaker import render, timeline as T, vad
-from indicate_speaker.config import Player
+from kuliss import render, timeline as T, vad
+from kuliss import speaker as cli
+from kuliss.config import Player, VoiceError, load_theme
 
 PLAYERS = tuple(Player(n, (200, 60, 90), Path("x.png"), (f"*_{n[0].lower()}.mkv",), n)
                 for n in ("Henrik", "Kenneth"))
@@ -136,7 +139,7 @@ def test_label_text_contrast_always_passes_wcag_aa():
 
 
 def test_canvas_matches_frame_aspect():
-    from indicate_speaker.config import Theme
+    from kuliss.config import Theme
     for n, orientation in itertools.product((1, 4, 8), ("horizontal", "vertical")):
         theme = Theme(players=PLAYERS[:1] * n, sound=Path("s.flac"), position="bottom-right",
                       orientation=orientation)
@@ -207,11 +210,6 @@ def test_rerun_after_kdenlive_renamed_our_ids(tmp_path):
 
 # --- theme, assets and robustness --------------------------------------------
 
-import pytest
-import skia
-
-from indicate_speaker import __main__ as cli
-from indicate_speaker.config import VoiceError, load_theme
 
 
 def write_theme(tmp_path, extra="", player_extra=""):
