@@ -12,6 +12,7 @@ jobs:
         python-version: ["3.11", "3.14"]
     steps:
       - uses: actions/checkout@v4
+      - run: sudo apt-get install -y --no-install-recommends libegl1   # skia-python loads libEGL
       - uses: astral-sh/setup-uv@v6
       - run: uv run --python ${{ matrix.python-version }} pytest -v
 
