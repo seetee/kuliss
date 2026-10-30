@@ -24,6 +24,29 @@ uv tool install git+https://github.com/seetee/kuliss.git
 uv run kuliss speaker ~/episodes/avsnitt217/avsnitt217.kdenlive --dry-run
 ```
 
+## Session workflow
+
+1. **Before recording:** in the folder that holds the `session_*` folders, run
+   `kuliss new`. Give the recording date and software versions; it creates
+   `session_<nr>_<date>/` with its `.md`, its Kdenlive project and `sources/`.
+2. **After recording:** everyone's OBS `.mkv` goes into `sources/`, named
+   `<date>_<initial>.mkv` (guests `<date>_<name>.mkv`).
+3. **Sync:** inside the session folder, close the project in Kdenlive and run
+   `kuliss sync`. Check that every offset has a confidence well above 10, open
+   the project, and delete the `Comms` clips once the sync sounds right.
+4. **Edit:** cut the episodes in Kdenlive. Each episode lives in its own folder
+   with a project of the same name, `avsnitt<nr>/avsnitt<nr>.kdenlive` (rename
+   the `avsnittXX<nr>` placeholder). Jot down moments in Kdenlive's Document
+   Notes as you go, with a `*` after the timestamp for a YouTube chapter.
+5. **Notes:** run `kuliss notes` anywhere in the session. It fills the session
+   `.md` and prints what is still missing per episode.
+6. **Overlay:** with the game's `theme.toml` next to or above the episode, run
+   `kuliss speaker avsnitt<nr>/avsnitt<nr>.kdenlive --preview 90`, check
+   `indicate-speaker/overlay-preview.mkv`, then run it without `--preview`.
+   Re-run it after any re-edit.
+7. **Publish:** render in Kdenlive and take the title, blurbs and `Kapitel`
+   list for YouTube from the session `.md`.
+
 ## `kuliss speaker`: speaker overlay
 
 Run it on a finished (or half-finished) Kdenlive project of a multi-player let's play. It adds a small overlay that shows:
