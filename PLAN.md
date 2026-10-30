@@ -21,9 +21,16 @@ What's left from the code review of 2026-09-18. Everything else from that review
 ## Before publishing
 
 - [ ] Commit `uv.lock` (remove it from `.gitignore`) so installs get the tested versions.
-- [ ] GitHub Actions (`uv run pytest` and a basic `ruff check` are in): add `uv run --resolution lowest-direct pytest` to keep the minimum versions honest (they were verified by hand on 2026-09-18), plus `ruff check`.
+- [ ] GitHub Actions (pytest on Ubuntu + Windows and `ruff check --select E,F` are in): add `uv run --resolution lowest-direct pytest` to keep the minimum versions honest (they were verified by hand on 2026-09-18).
 - [ ] `pyproject.toml`: `requires-python = ">=3.12"` (numpy 2.5 dropped 3.11, so 3.11 pins us to numpy 2.4.x); then classifiers; add `--version` to `kuliss speaker`.
 - [ ] Privacy: use generic player names and paths in `CLAUDE.md`, `theme.example.toml` and the tests, instead of the crew's names and `~/documents/samkvam.online`/`~/bin/gearlever_*`.
+
+## `kuliss sync` and `kuliss new` (added 2026-10-30)
+
+- [ ] First real run: when session 29's recordings are in `sources/`, run `kuliss sync`, open the project in the Kdenlive GUI and check each clip plays the right audio stream. So far only verified on synthetic recordings and through `AppRun --render`.
+- [ ] First real guest `.mkv`: check that the created guest tracks look right in the GUI.
+- [ ] Rename `session_28_2025-10-24/avsnitt224/avsnittXX28.kdenlive` to `avsnitt224.kdenlive` (ask Kenneth first), so `kuliss notes` sees that episode.
+- [ ] Known limits, fix only if they bite: re-syncing after clearing the tracks adds the files to the bin again (`timeline.add_source`); guest names with a hyphen or space (`_anna-karin.mkv`) are skipped; absent players' namecards stay in the template's `Nametags` track.
 
 ## Future options (only if needed)
 
@@ -35,7 +42,7 @@ What's left from the code review of 2026-09-18. Everything else from that review
 
 ### Simplification pass (ponytail-review of `ad328aa~1..1549135`)
 
-Line numbers are against `kdenlive_commentor.py` at 1549135, now `kuliss/notes.py` (one line less: its shebang is gone). Run `uv run pytest tests/test_notes.py`
+Line numbers are against `kdenlive_commentor.py` at 1549135, now `kuliss/notes.py` (one line less: its shebang is gone; from `scaffold_session` on they have drifted further, so search by function name). Run `uv run pytest tests/test_notes.py`
 after each item — idempotency and non-destructiveness are the contract.
 
 - [ ] **L61-69** — drop `_version()`; `--version` can use `f'%(prog)s {__version__}'`.
