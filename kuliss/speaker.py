@@ -7,8 +7,6 @@ The theme is found next to the project or in any folder above it.
 
 import argparse
 import math
-import os
-import shutil
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -85,22 +83,11 @@ def run(a) -> None:
         print(f"Preview written: {overlay}")
         return
 
-    if project_path.stat().st_mtime_ns != mtime:
-        die(f"{project_path.name} was saved while we worked; run again")
-    backup = project_path.with_name(f"{project_path.name}.{time.strftime('%Y%m%d-%H%M%S')}.bak")
-    shutil.copy2(project_path, backup)
     shift = round(theme.sound_offset * fps)
     timeline.patch(proj, overlay, render.placement(theme, painter.lay, proj.width, proj.height),
                    theme.sound, sound_frames(theme.sound, fps),
                    [c + shift for c in cuts if 0 <= c + shift < proj.length])
-    tmp = project_path.with_name(project_path.name + ".partial")
-    try:
-        timeline.save(proj, tmp)
-        shutil.copymode(project_path, tmp)   # keep the project's permissions
-        os.replace(tmp, project_path)
-    except BaseException:
-        tmp.unlink(missing_ok=True)
-        raise
+    backup = timeline.write(proj, project_path, mtime)
     print(f"Updated {project_path.name} (backup: {backup.name}). "
           "If it is open in Kdenlive, reopen it without saving first.")
 

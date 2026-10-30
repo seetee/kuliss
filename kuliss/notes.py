@@ -744,9 +744,23 @@ def scaffold_session(start: Path) -> None:
     block = _ensure_episode(doc, info, episode)
     _ensure_section(block, 'Noteworthy')
     _write_atomic(session_dir / f'{name}.md', _render(doc))
+    made = f'{name}.md'
+
+    template = root / '_assets' / 'samkvam-session_template.kdenlive'
+    if template.is_file():
+        from .config import VoiceError   # imported here: this module stays stdlib-only
+        from .session import create_project
+        try:
+            create_project(template, session_dir / f'{name}.kdenlive')
+            made += f', {name}.kdenlive'
+        except VoiceError as e:
+            print(f'warning: no Kdenlive project created: {e}')
+    else:
+        print(f'warning: no {template}, so no Kdenlive project created')
 
     print(f'created {session_dir}')
-    print(f'  {episode}/, kortisar/, sources/, {name}.md')
+    print(f'  {episode}/, kortisar/, sources/, {made}')
+    print('Put the recordings in sources/, then run "kuliss sync" there.')
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────

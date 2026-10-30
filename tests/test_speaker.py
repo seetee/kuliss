@@ -322,3 +322,10 @@ def test_preview_must_be_positive():
     for bad in ("0", "-3", "abc"):
         with pytest.raises(Exception, match="above 0"):
             cli.positive(bad)
+
+
+def test_voice_track_may_carry_a_voice_suffix(tmp_path):
+    """The session template names voice tracks "<Player> Voice"."""
+    p = tmp_path / "ep.kdenlive"
+    p.write_text(PROJECT.replace(">Henrik</property>", ">Henrik Voice</property>", 1))
+    assert len(T.voice_entries(T.load(p), PLAYERS[0])) == 1

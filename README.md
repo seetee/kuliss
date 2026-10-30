@@ -11,7 +11,8 @@ Tools for the boring parts of producing a multi-player let's play from Kdenlive,
 |---|---|
 | `kuliss speaker` | Adds a who-we-watch / who-talks overlay to a Kdenlive project. |
 | `kuliss notes` | Syncs Kdenlive's Document Notes into the session Markdown file, with YouTube chapters. |
-| `kuliss new` | Scaffolds the next session directory. |
+| `kuliss new` | Scaffolds the next session directory, with its Kdenlive project. |
+| `kuliss sync` | Puts the session's recordings on the project's tracks, in sync. |
 
 ## Install
 
@@ -61,7 +62,7 @@ Copy [`theme.example.toml`](theme.example.toml) to `theme.toml` next to the proj
 - `position` picks a corner (`top-left`, `top-right`, `bottom-left`, `bottom-right`) or an edge centre (`top`, `bottom`, `left`, `right`). `margin` is the distance from the edges the bar sits against, and `offset = [x, y]` nudges it from there in pixels (positive = right/down). For example, `position = "left"` with `offset = [0, -100]` centres the bar on the left edge, 100 px above the middle.
 - `orientation = "horizontal"` (the default) draws a row, `"vertical"` a column along the frame edge. The name label sits under the viewed avatar either way; the column spaces the avatars out to leave room for it.
 
-- `voice_track` is the name of the Kdenlive **audio track** holding that player's voice; it defaults to the player's name. The tool uses the audio stream and the cuts you chose on that track.
+- `voice_track` is the name of the Kdenlive **audio track** holding that player's voice; it defaults to the player's name, and a track named `<name> Voice` (as in the session template) is found too. The tool uses the audio stream and the cuts you chose on that track.
 - Video clips from the same file as that voice track count as the player's view, whichever video track they sit on. Set `source` only when someone's view is recorded in a different file. It takes a file-name pattern such as `"*_h.mkv"`, or a list of them.
 - Unknown keys get a warning (usually a typo), and wrong values stop the run with a message saying what is expected.
 
@@ -262,7 +263,38 @@ walks through the software versions (Enter keeps each value, type to replace,
 plus free extra lines). It then creates `session_<nr>_<date>/` containing
 `sources/`, `kortisar/` (for YouTube shorts and TikToks), a placeholder
 episode directory `avsnittXX<nr>` (the `XX` is a literal placeholder — rename
-it once the real episode number is known), and a pre-filled skeleton `.md`.
+it once the real episode number is known), a pre-filled skeleton `.md`, and
+the session's Kdenlive project `session_<nr>_<date>.kdenlive`, made from
+`_assets/samkvam-session_template.kdenlive` (intro, namecards, outro and the
+named tracks).
+
+## `kuliss sync`: recordings in sync
+
+Copy everyone's recordings into the session's `sources/`, close the project in
+Kdenlive, and run `kuliss sync` inside the session. It puts each recording on
+the project's tracks, lined up so everyone's audio and video is in sync, with
+the earliest recording starting where the intro music ends.
+
+The recordings must follow the crew's OBS standard:
+
+| File | Stream | Title | Goes on track |
+|---|---|---|---|
+| `<date>_<initial>.mkv` (`j`, `r`, `h`, `k`) | video | | `<Name> Game` (video) |
+| | audio 1 | `Full mix` | not used (backup) |
+| | audio 2 | `Game audio` | `<I> Game` |
+| | audio 3 | `Voice audio` | `<Name> Voice` |
+| | audio 4 | `Comms` | `<I> Comms` |
+
+The streams are found by title, not by position. Syncing listens for each
+person's voice in the others' `Comms` (the call as they heard it), in both
+directions, which cancels the call's delay. On session 28 it landed within
+0.15 s of the hand sync even in one direction. It prints each offset with a
+confidence and stops if a recording can't be matched. Once you're happy with
+the sync, delete the `Comms` tracks' clips unless you need them as a backup.
+
+`kuliss sync` refuses to touch a track that already has clips, so it can never
+disturb an edit in progress; clear the recordings' tracks to sync again. Like
+`kuliss speaker`, it saves a timestamped `.bak` first.
 
 Safety details:
 
@@ -279,7 +311,7 @@ Safety details:
 uv run pytest            # no media files needed
 ```
 
-The code is in `kuliss/`. `vad.py` and `render.py` don't depend on Kdenlive, so [Klatch](https://github.com/seetee/klatch) can reuse them.
+The code is in `kuliss/`. `vad.py`, `sync.py` and `render.py` don't depend on Kdenlive, so [Klatch](https://github.com/seetee/klatch) can reuse them.
 
 | File | Contents |
 |---|---|
@@ -289,6 +321,8 @@ The code is in `kuliss/`. `vad.py` and `render.py` don't depend on Kdenlive, so 
 | `render.py` | Drawing and encoding the overlay |
 | `speaker.py` | `kuliss speaker` |
 | `notes.py` | `kuliss notes` and `kuliss new` |
+| `sync.py` | Lining recordings up by their audio |
+| `session.py` | `kuliss sync`, and the project `kuliss new` creates |
 | `__main__.py` | The `kuliss` command |
 
 ## License

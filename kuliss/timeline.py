@@ -7,7 +7,10 @@ a re-run finds and reuses them instead of adding more.
 """
 
 import fnmatch
+import os
 import re
+import shutil
+import time
 import uuid
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, replace
@@ -222,7 +225,7 @@ def cuts(spans) -> list[int]:
 
 def voice_entries(project: Project, player: Player) -> list[Entry]:
     for t in project.tracks:
-        if t.audio and t.name == player.voice_track:
+        if t.audio and t.name in (player.voice_track, f"{player.voice_track} Voice"):
             return [e for e in t.entries if e.audio_index >= 0]
     names = sorted({t.name for t in project.tracks if t.audio and t.name})
     die(f"{player.name}: no audio track named {player.voice_track!r} "
@@ -410,3 +413,81 @@ def patch(project: Project, overlay: Path, rect: tuple[int, int, int, int],
 
 def save(project: Project, path: Path) -> None:
     project.tree.write(path, encoding="utf-8", xml_declaration=True)
+
+
+def write(project: Project, path: Path, mtime: int) -> Path:
+    """Replace the project file atomically, after a timestamped backup. Refuses if the
+    file changed since it was read (mtime from before load). Returns the backup."""
+    if path.stat().st_mtime_ns != mtime:
+        die(f"{path.name} was saved while we worked; run again")
+    backup = path.with_name(f"{path.name}.{time.strftime('%Y%m%d-%H%M%S')}.bak")
+    shutil.copy2(path, backup)
+    tmp = path.with_name(path.name + ".partial")
+    try:
+        save(project, tmp)
+        shutil.copymode(path, tmp)   # keep the project's permissions
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+    return backup
+
+
+# --------------------------------------------------------------------------
+# Recordings (kuliss sync)
+# --------------------------------------------------------------------------
+
+def add_source(project: Project, path: Path, length: int,
+               streams: list[int]) -> tuple[str, str, dict[int, str]]:
+    """A recording as Kdenlive keeps one: a bin clip, plus a timeline instance for its
+    video and one per audio stream used. Returns (kdenlive:id, video producer id,
+    {audio stream: producer id})."""
+    # shortcut: a re-sync after clearing the tracks adds the file to the bin again;
+    # reuse the bin clip if that turns out to be annoying
+    taken = (props(e).get("kdenlive:id", "") for e in project.root)
+    kid = str(1 + max((int(k) for k in taken if k.isdigit()), default=0))
+    fields = {"length": length, "eof": "pause", "resource": str(path),
+              "mlt_service": "avformat-novalidate", "seekable": 1,
+              "audio_index": streams[0], "video_index": 0,
+              "kdenlive:clipname": path.name, "kdenlive:folderid": -1, "kdenlive:clip_type": 0,
+              "kdenlive:control_uuid": "{%s}" % uuid.uuid4()}
+
+    def chain(cid, **extra):
+        ch = _new_chain(project, cid, kid)
+        ch.set("out", str(length - 1))
+        for k, v in {**fields, **extra}.items():
+            set_prop(ch, k, v)
+        return cid
+
+    ET.SubElement(project.byid()["main_bin"], "entry",
+                  {"producer": chain(f"kuliss_{kid}_bin"), "in": "0", "out": str(length - 1)})
+    video = chain(f"kuliss_{kid}_v", **{"set.test_audio": 1})
+    audio = {s: chain(f"kuliss_{kid}_a{s}", audio_index=s, **{"set.test_image": 1})
+             for s in streams}
+    return kid, video, audio
+
+
+def place(project: Project, track_name: str, audio: bool, producer: str, kid: str,
+          start: int, length: int) -> None:
+    """A whole clip at timeline frame `start` on the named (empty) track."""
+    byid = project.byid()
+    for ref in project.seq.findall("track"):
+        t = byid.get(ref.get("producer"))
+        if (t is not None and t.tag == "tractor"
+                and props(t).get("kdenlive:track_name") == track_name
+                and (props(t).get("kdenlive:audio_track") == "1") == audio):
+            break
+    else:
+        die(f"the project has no {'audio' if audio else 'video'} track named {track_name!r}")
+    pl = byid[t.find("track").get("producer")]
+    for c in pl.findall("blank"):
+        pl.remove(c)
+    if start:
+        ET.SubElement(pl, "blank", length=str(start))
+    en = ET.SubElement(pl, "entry", {"producer": producer, "in": "0", "out": str(length - 1)})
+    set_prop(en, "kdenlive:id", kid)
+    end = start + length
+    for tr in project.root.iter("tractor"):   # the sequence and project lengths
+        if tr.get("out") is not None and frames(tr.get("out"), project.fps) < end - 1:
+            tr.set("out", str(end - 1))
+    project.length = max(project.length, end)

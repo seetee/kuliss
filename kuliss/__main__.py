@@ -3,6 +3,7 @@
     kuliss speaker PROJECT.kdenlive [...]   who-we-watch / who-talks overlay
     kuliss notes [DIR] [...]                sync Document Notes into the session .md
     kuliss new [DIR]                        scaffold the next session directory
+    kuliss sync [SESSION_DIR]               put sources/*.mkv in sync on the project's tracks
 
 Run `kuliss COMMAND --help` for each command's options.
 """
@@ -15,6 +16,9 @@ def main() -> int:
     if cmd == "speaker":
         from . import speaker
         return speaker.main(args)
+    if cmd == "sync":
+        from . import session
+        return session.main(args)
     if cmd in ("notes", "new"):
         from . import notes  # imported lazily: speaker pulls in skia, PyAV and Silero
         sys.argv[0] = "kuliss notes"

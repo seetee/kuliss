@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `kuliss` (AGPL-3.0-or-later) is a set of Kdenlive tools for the **Samkväm** let's play, run as one `kuliss` command (`__main__.py` dispatches; `notes` is imported lazily so it never loads skia/PyAV/Silero). It merges two former projects, `indicate-speaker` and `kdenlive-commentor`, and both histories are kept.
 
-Klatch (`../klatch`, an automatic podcast pipeline) will reuse `vad.py`, `render.py` and the YouTube chapter/limit logic in `notes.py`. Klatch's input is per-person audio files, **not** a Kdenlive project, so keep those parts free of Kdenlive dependencies. Split the YouTube helpers out of `notes.py` only once Klatch actually imports them.
+Klatch (`../klatch`, an automatic podcast pipeline) will reuse `vad.py`, `sync.py`, `render.py` and the YouTube chapter/limit logic in `notes.py`. Klatch's input is per-person audio files, **not** a Kdenlive project, so keep those parts free of Kdenlive dependencies. Split the YouTube helpers out of `notes.py` only once Klatch actually imports them.
 
 ## Commands
 
@@ -17,7 +17,8 @@ uv run kuliss speaker P.kdenlive                # render + patch the project
 uv run kuliss notes [dir]                       # session dir, parent dir, or bare from anywhere inside a session tree
 uv run kuliss notes --dry-run                   # diff preview, no writes
 uv run kuliss notes --show avsnittXXX           # print one episode's section
-uv run kuliss new                               # scaffold next session dir
+uv run kuliss new                               # scaffold next session dir + its .kdenlive
+uv run kuliss sync [session dir]                # sources/*.mkv onto the project's tracks, in sync
 uv run pytest                                   # single test: -k <name>; no media needed
 ```
 
@@ -55,7 +56,7 @@ The `indicate-speaker` names of the tracks, bin clips (`TRACK_NAME`/`CLIP_PREFIX
 
 `notes.py` (formerly `kdenlive_commentor.py`, stdlib only) extracts timestamped notes from Kdenlive project files (the `kdenlive:documentnotes` XML property) and merges them into a session Markdown file, repairing that file to a canonical skeleton on every run. It assumes the directory layout and session-file skeleton documented in README.md.
 
-The checklist flags YouTube pitfalls: Titel > 100 chars, chapter lists with < 3 entries. `scaffold_session` derives the next session number from existing `session_*` dirs, prompts interactively for the recording date and software versions (`_prompt` falls back to defaults on EOF, which is what the tests use), and creates `sources/`, `kortisar/` (shorts/TikToks), a placeholder episode dir `avsnittXX<nr>` (literal `XX` — episode numbers aren't known at scaffold time), and the skeleton `.md` via the `_ensure_*` machinery.
+The checklist flags YouTube pitfalls: Titel > 100 chars, chapter lists with < 3 entries. `scaffold_session` derives the next session number from existing `session_*` dirs, prompts interactively for the recording date and software versions (`_prompt` falls back to defaults on EOF, which is what the tests use), and creates `sources/`, `kortisar/` (shorts/TikToks), a placeholder episode dir `avsnittXX<nr>` (literal `XX` — episode numbers aren't known at scaffold time), the skeleton `.md` via the `_ensure_*` machinery, and (via `session.create_project`, imported lazily) `session_<nr>_<date>.kdenlive` from `<root>/_assets/samkvam-session_template.kdenlive`, with the template's relative asset paths made absolute and a fresh `documentid`.
 
 Exit code is 1 if any warning was printed (unreadable `.kdenlive`, stale `###` section with no matching directory). Real writes are atomic (`_write_atomic`) and preceded by a `<name>.md.bak` backup of the previous version.
 
@@ -81,6 +82,14 @@ Pipeline:
 - Running twice must produce byte-identical output (`test_idempotent`).
 - Heading levels are load-bearing: `## ` top-level sections, `### <episode-dir-name>`, `#### <section>` — section names must exactly match the headings typed in Kdenlive's notes panel.
 
-## Verifying `speaker` against real Kdenlive against real Kdenlive
+## `kuliss sync`
+
+`session.py` places `sources/*.mkv` on the session project. Unlike `speaker`, it matches by file name and **stream title**, because that is the crew's recording standard (decided 2026-10-30): `<date>_<initial>.mkv`, initials from `notes.TALLY_NAMES`, audio titled `Full mix` (unused backup), `Game audio`, `Voice audio`, `Comms`. `TRACKS` maps them to the template's track names: `<I> Comms`, `<Name> Voice`, `<I> Game`, video `<Name> Game`.
+- `sync.py` (Kdenlive-free): a 100 Hz log-loudness envelope of the first 30 min (via `vad.decode`), FFT cross-correlation. `offset` measures both directions (my voice in your Comms, yours in mine) and averages, cancelling the call delay; confidence (peak/std) below `MIN_CONFIDENCE` is dropped, and both weak is an error. Session 28's real matches scored 23–35.
+- It refuses if any target track already has clips: never touch an edit in progress. The earliest recording starts at the end of the first clip on the `Assets` audio track (the intro music).
+- `timeline.add_source` writes a bin chain plus one timeline chain for the video and one per audio stream, the layout Kdenlive itself uses; Kdenlive re-probes the rest. Verified by rendering a synced project through `AppRun --render`.
+- `timeline.write` is the shared backup + changed-on-disk check + atomic replace (also used by `speaker`).
+
+## Verifying against real Kdenlive
 
 `melt` is not on PATH. Extract it from the AppImage (`~/bin/gearlever_kdenlive_*.appimage --appimage-extract`), source `apprun-hooks/craft-runenv-hook.sh`, and set `LD_LIBRARY_PATH=squashfs-root/usr/lib`. To render the timeline rather than `main_bin`, point the root `producer` attribute at the `kdenlive:projectTractor` tractor. `AppRun --render P.kdenlive out.mp4` (with `QT_QPA_PLATFORM=offscreen`) loads the project through Kdenlive's own document model.
