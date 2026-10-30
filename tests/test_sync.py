@@ -51,7 +51,8 @@ def track(tid, name, audio, body=""):
 
 NAMES = [("A", "Assets", True), ("A1", "J Comms", True), ("A2", "K Comms", True),
          ("A3", "Joel Voice", True), ("A4", "Kenneth Voice", True), ("A5", "J Game", True),
-         ("A6", "K Game", True), ("V1", "Joel Game", False), ("V2", "Kenneth Game", False)]
+         ("A6", "K Game", True), ("V1", "Joel Game", False), ("V2", "Kenneth Game", False),
+         ("VA", "Assets", False)]
 TEMPLATE = f"""<?xml version='1.0' encoding='utf-8'?>
 <mlt LC_NUMERIC="C" producer="main_bin" root="ROOT" version="7.41.0">
  <profile frame_rate_num="10" frame_rate_den="1" width="1920" height="1080"/>
@@ -161,3 +162,25 @@ def test_recording_without_the_standard_streams_is_refused(tmp_path):
         c.mux(st.encode(None))
     with pytest.raises(VoiceError, match="titled Comms, Voice audio, Game audio"):
         session.sync_session(sdir)
+
+
+def test_guest_gets_own_tracks_and_crew_may_use_full_names(tmp_path, capsys):
+    sdir, project = make_session(tmp_path)
+    src = sdir / "sources"
+    for f in src.glob("*.mkv"):
+        f.unlink()
+    j, k, g = bursts(120), bursts(120), bursts(120)   # Kenneth starts 12 s in, Jesper 5 s in
+    recording(src / "2026-10-30_j.mkv", j[:9000], np.maximum.reduce([k, g])[:9000], 90)
+    recording(src / "2026-10-30_kenneth.mkv", k[1200:10200], np.maximum.reduce([j, g])[1200:10200], 90)
+    recording(src / "2026-10-30_jesper.mkv", g[500:9500], np.maximum.reduce([j, k])[500:9500], 90)
+    session.sync_session(sdir)
+
+    p = T.load(project)
+    tracks = {(t.name, t.audio): t for t in p.tracks}
+    for name, audio in [("Jesper Comms", True), ("Jesper Voice", True), ("Jesper Game", True),
+                        ("Jesper Game", False)]:
+        assert tracks[name, audio].entries[0].start == 50 + 50, name
+    assert tracks["Kenneth Voice", True].entries[0].start == 50 + 120
+    order = [t.name for t in p.tracks if not t.audio]
+    assert order.index("Jesper Game") == order.index("Assets") - 1   # under intro and namecards
+    assert "added the video track 'Jesper Game'" in capsys.readouterr().out

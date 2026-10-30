@@ -180,6 +180,11 @@ def with_sources(project: Project, players: tuple[Player, ...]) -> tuple[Player,
     return tuple(out)
 
 
+def present(project: Project, players: tuple[Player, ...]) -> tuple[Player, ...]:
+    """The players with clips on their voice track."""
+    return tuple(p for p in players if voice_entries(project, p))
+
+
 def view_map(project: Project, players: tuple[Player, ...]) -> np.ndarray:
     """Per frame: index of the player whose view is on screen, -1 for none.
     The topmost visible video track showing a player's clip wins. Other clips
@@ -320,14 +325,17 @@ def _shift_tracks(seq: ET.Element, k: int) -> None:
         set_prop(seq, "kdenlive:sequenceproperties.tracksCount", int(n) + 1)
 
 
-def _ensure_track(project: Project, audio: bool) -> ET.Element:
-    """Our track's first playlist, emptied; the track is created if missing."""
+def _ensure_track(project: Project, audio: bool, name: str = TRACK_NAME,
+                  base: str | None = None, under: str | None = None) -> ET.Element:
+    """The named track's first playlist, emptied; the track is created if missing.
+    A new audio track goes on top of the audio tracks, a new video track on top,
+    or right under the video track named `under`."""
     seq, byid = project.seq, project.byid()
     refs = seq.findall("track")
     for ref in refs:
         t = byid.get(ref.get("producer"))
         if (t is not None and t.tag == "tractor"
-                and props(t).get("kdenlive:track_name") == TRACK_NAME
+                and props(t).get("kdenlive:track_name") == name
                 and (props(t).get("kdenlive:audio_track") == "1") == audio):
             t.set("out", str(project.length - 1))
             pls = [byid[s.get("producer")] for s in t.findall("track")]
@@ -336,13 +344,13 @@ def _ensure_track(project: Project, audio: bool) -> ET.Element:
                     pl.remove(c)
             return pls[0]
 
-    base = "indspk_audio" if audio else "indspk_video"
+    base = base or ("indspk_audio" if audio else "indspk_video")
     if base in byid:
         die(f"project already has an element with id {base!r} that is not ours")
     tractor = ET.Element("tractor", {"id": base, "in": "0", "out": str(project.length - 1)})
     if audio:
         set_prop(tractor, "kdenlive:audio_track", 1)
-    set_prop(tractor, "kdenlive:track_name", TRACK_NAME)
+    set_prop(tractor, "kdenlive:track_name", name)
     pls = []
     for n in range(2):
         pl = ET.Element("playlist", id=f"{base}_pl{n}")
@@ -361,7 +369,10 @@ def _ensure_track(project: Project, audio: bool) -> ET.Element:
                       .get("kdenlive:audio_track") == "1"]
         k = refs.index(audio_refs[-1]) + 1 if audio_refs else 1
     else:
-        k = len(refs)
+        k = next((i for i, r in enumerate(refs)
+                  if under and (t := byid.get(r.get("producer"))) is not None
+                  and props(t).get("kdenlive:track_name") == under
+                  and props(t).get("kdenlive:audio_track") != "1"), len(refs))
     _shift_tracks(seq, k)
     children = list(seq)
     seq.insert(children.index(refs[k - 1]) + 1, ET.Element("track", producer=base))

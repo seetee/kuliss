@@ -10,6 +10,7 @@ import math
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from pathlib import Path
 
 import av
@@ -48,6 +49,13 @@ def run(a) -> None:
     proj = timeline.load(project_path)
     mtime = project_path.stat().st_mtime_ns
     fps = proj.fps
+    here = timeline.present(proj, theme.players)
+    if not here:
+        die("no player has clips on their voice track")
+    if len(here) < len(theme.players):   # someone missed the session: no avatar for them
+        print("Not in this project (no voice clips): "
+              + ", ".join(p.name for p in theme.players if p not in here))
+        theme = replace(theme, players=here)
     players = timeline.with_sources(proj, theme.players)
     # load every image and font now: a bad asset should fail in a second, not after the analysis
     painter = render.Painter(theme, render.layout(theme, proj.width, proj.height))

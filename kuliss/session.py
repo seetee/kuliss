@@ -2,9 +2,9 @@
 
     kuliss sync [SESSION_DIR]
 
-Each recording in sources/ is <date>_<initial>.mkv with audio streams titled
-"Comms", "Voice audio" and "Game audio". Each player's voice is heard in the others'
-Comms streams, which is what lines the files up.
+Each recording in sources/ is <date>_<initial>.mkv (a guest: <date>_<name>.mkv) with
+audio streams titled "Comms", "Voice audio" and "Game audio". Each player's voice is
+heard in the others' Comms streams, which is what lines the files up.
 """
 
 import argparse
@@ -24,6 +24,7 @@ from .config import VoiceError, die
 from .notes import TALLY_NAMES, _discover
 
 NAMES = dict(TALLY_NAMES)   # initial -> player
+CREW = {n.lower(): (i, n) for i, n in TALLY_NAMES}
 TRACKS = (   # track name, audio track?, stream title (None: the video)
     ("{i} Comms", True, "Comms"),
     ("{name} Voice", True, "Voice audio"),
@@ -64,10 +65,17 @@ def create_project(template: Path, dest: Path) -> None:
 
 
 def probe(path: Path, fps: float) -> Recording | None:
-    m = re.search(r"_([A-Za-z])$", path.stem)
-    if not m or m[1].upper() not in NAMES:
+    m = re.search(r"_([^\W\d_]+)$", path.stem)
+    tag = m[1] if m else ""
+    if tag.upper() in NAMES:
+        i, name = tag.upper(), NAMES[tag.upper()]
+    elif tag.lower() in CREW:
+        i, name = CREW[tag.lower()]
+    elif len(tag) > 1:   # a guest: all their tracks carry their name
+        i = name = tag.capitalize()
+    else:
         print(f"WARNING: {path.name}: the name doesn't end in _<initial> of a known player "
-              f"({', '.join(NAMES)}); skipped")
+              f"({', '.join(NAMES)}) or _<guest name>; skipped")
         return None
     try:
         with av.open(str(path)) as c:
@@ -79,8 +87,7 @@ def probe(path: Path, fps: float) -> Recording | None:
             length = math.ceil(c.duration / av.time_base * fps)
     except (av.FFmpegError, TypeError) as e:
         die(f"cannot read {path}: {e}")
-    i = m[1].upper()
-    return Recording(path, i, NAMES[i], streams, length)
+    return Recording(path, i, name, streams, length)
 
 
 def sync_session(session_dir: Path) -> None:
@@ -98,9 +105,7 @@ def sync_session(session_dir: Path) -> None:
         for fmt, audio, _ in TRACKS:
             name = fmt.format(i=r.initial, name=r.name)
             t = tracks.get((name, audio))
-            if t is None:
-                die(f"{path.name} has no {'audio' if audio else 'video'} track named {name!r}")
-            if t.entries:   # never touch an edit in progress
+            if t is not None and t.entries:   # never touch an edit in progress
                 die(f"the {name!r} track already has clips; clear the recordings' tracks "
                     "to sync again")
 
@@ -130,7 +135,12 @@ def sync_session(session_dir: Path) -> None:
                                                 [r.streams[t] for t in TITLES])
         start = at + round((offsets[r.name] - first) * proj.fps)
         for fmt, is_audio, title in TRACKS:
-            timeline.place(proj, fmt.format(i=r.initial, name=r.name), is_audio,
+            name = fmt.format(i=r.initial, name=r.name)
+            if (name, is_audio) not in tracks:   # a guest, usually
+                slug = re.sub(r"\W+", "_", name.lower()) + ("_a" if is_audio else "_v")
+                timeline._ensure_track(proj, is_audio, name, f"kuliss_{slug}", under="Assets")
+                print(f"  added the {'audio' if is_audio else 'video'} track {name!r}")
+            timeline.place(proj, name, is_audio,
                            audio[r.streams[title]] if is_audio else video, kid, start, r.length)
     backup = timeline.write(proj, path, mtime)
     print(f"Updated {path.name} (backup: {backup.name}). "

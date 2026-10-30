@@ -279,7 +279,7 @@ The recordings must follow the crew's OBS standard:
 
 | File | Stream | Title | Goes on track |
 |---|---|---|---|
-| `<date>_<initial>.mkv` (`j`, `r`, `h`, `k`) | video | | `<Name> Game` (video) |
+| `<date>_<initial>.mkv` (`j`, `r`, `h`, `k`; guests `<date>_<name>.mkv`) | video | | `<Name> Game` (video) |
 | | audio 1 | `Full mix` | not used (backup) |
 | | audio 2 | `Game audio` | `<I> Game` |
 | | audio 3 | `Voice audio` | `<Name> Voice` |
@@ -291,6 +291,17 @@ directions, which cancels the call's delay. On session 28 it landed within
 0.15 s of the hand sync even in one direction. It prints each offset with a
 confidence and stops if a recording can't be matched. Once you're happy with
 the sync, delete the `Comms` tracks' clips unless you need them as a backup.
+
+**Someone missing?** Sync whoever recorded; the absent player's tracks stay
+empty. `kuliss speaker` leaves anyone without clips on their voice track out
+of the overlay, so they get no avatar. Remove their namecard by hand.
+
+**Guests** record to the same OBS standard and name the file after themselves:
+`<date>_jesper.mkv`. Their tracks don't exist in the template, so `kuliss sync`
+adds `Jesper Comms`, `Jesper Voice`, `Jesper Game` (audio) and a `Jesper Game`
+video track, which goes under the intro and namecards. For the overlay, add the
+guest as a `[[player]]` in that game's `theme.toml`. A crew member may also use
+their full name (`_kenneth.mkv`).
 
 `kuliss sync` refuses to touch a track that already has clips, so it can never
 disturb an edit in progress; clear the recordings' tracks to sync again. Like

@@ -329,3 +329,11 @@ def test_voice_track_may_carry_a_voice_suffix(tmp_path):
     p = tmp_path / "ep.kdenlive"
     p.write_text(PROJECT.replace(">Henrik</property>", ">Henrik Voice</property>", 1))
     assert len(T.voice_entries(T.load(p), PLAYERS[0])) == 1
+
+
+def test_absent_player_is_left_out(tmp_path):
+    """Someone missed the session: their voice track is empty, so no avatar for them."""
+    p = tmp_path / "ep.kdenlive"
+    p.write_text(PROJECT.replace('<entry producer="c_h" in="100" out="299"/>', ""))
+    assert T.present(T.load(p), PLAYERS[:1]) == ()
+    assert T.present(load(tmp_path), PLAYERS[:1]) == PLAYERS[:1]
