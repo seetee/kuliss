@@ -34,10 +34,13 @@ uv run kuliss speaker ~/episodes/avsnitt217/avsnitt217.kdenlive --dry-run
 3. **Sync:** inside the session folder, close the project in Kdenlive and run
    `kuliss sync`. Check that every offset has a confidence well above 10, open
    the project, and delete the `Comms` clips once the sync sounds right.
-4. **Edit:** cut the episodes in Kdenlive. Each episode lives in its own folder
-   with a project of the same name, `avsnitt<nr>/avsnitt<nr>.kdenlive` (rename
-   the `avsnittXX<nr>` placeholder). Jot down moments in Kdenlive's Document
-   Notes as you go, with a `*` after the timestamp for a YouTube chapter.
+4. **Edit, one episode at a time:** open the synced session project and
+   *Save Copy* it into the episode's folder, as `avsnitt<nr>/avsnitt<nr>.kdenlive`
+   (rename the `avsnittXX<nr>` placeholder first). Folder and file must share
+   the name, or `kuliss notes` won't see the episode. Close the session
+   project, open the episode copy, trim away the start and end that belong to
+   other episodes, and edit. Jot down moments in Kdenlive's Document Notes as
+   you go, with a `*` after the timestamp for a YouTube chapter.
 5. **Notes:** run `kuliss notes` anywhere in the session. It fills the session
    `.md` and prints what is still missing per episode.
 6. **Overlay:** with the game's `theme.toml` next to or above the episode, run
