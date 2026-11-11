@@ -7,7 +7,8 @@ import av
 import numpy as np
 import pytest
 
-from kuliss import session, sync, timeline as T
+from kuliss import session, sync
+from kuliss import timeline as T
 from kuliss.config import VoiceError
 
 RNG = np.random.default_rng(67)
@@ -96,7 +97,7 @@ def recording(path, voice, comms, seconds):
             f.pts, f.time_base = i, Fraction(1, 1)
             c.mux(vs.encode(f))
         c.mux(vs.encode(None))
-        for st, pcm in zip(streams, tracks.values()):
+        for st, pcm in zip(streams, tracks.values(), strict=True):
             for i in range(0, len(pcm), sr):
                 f = av.AudioFrame.from_ndarray((pcm[i:i + sr] * 32767).astype(np.int16)[None, :],
                                                format="s16", layout="mono")
@@ -131,9 +132,9 @@ def test_create_project_makes_paths_absolute(tmp_path):
     assert T.props(root.find("playlist[@id='main_bin']"))["kdenlive:docproperties.documentid"] != "1"
 
 
-def test_sync_places_recordings_and_refuses_a_second_run(tmp_path, capsys):
+def test_sync_places_recordings_and_refuses_a_second_run(tmp_path):
     sdir, project = make_session(tmp_path)
-    session.sync_session(sdir)
+    result = session.sync_session(sdir)
     p = T.load(project)
     tracks = {t.name: t for t in p.tracks}
     joel, kenneth = 50, 50 + 120               # after the 5 s intro; Kenneth 12 s later
@@ -144,7 +145,7 @@ def test_sync_places_recordings_and_refuses_a_second_run(tmp_path, capsys):
         assert (e.start, e.length, e.audio_index) == (start, 900, stream), name
         assert Path(e.resource).name.endswith(f"_{name[0].lower()}.mkv")
     assert tracks["Kenneth Game"].entries[0].start == kenneth and p.length == kenneth + 900
-    assert "+12.00 s" in capsys.readouterr().out
+    assert round(result.offsets["Kenneth"][0], 2) == 12.0
 
     with pytest.raises(VoiceError, match="already has clips"):
         session.sync_session(sdir)
@@ -164,7 +165,7 @@ def test_recording_without_the_standard_streams_is_refused(tmp_path):
         session.sync_session(sdir)
 
 
-def test_guest_gets_own_tracks_and_crew_may_use_full_names(tmp_path, capsys):
+def test_guest_gets_own_tracks_and_crew_may_use_full_names(tmp_path):
     sdir, project = make_session(tmp_path)
     src = sdir / "sources"
     for f in src.glob("*.mkv"):
@@ -173,7 +174,7 @@ def test_guest_gets_own_tracks_and_crew_may_use_full_names(tmp_path, capsys):
     recording(src / "2026-10-30_j.mkv", j[:9000], np.maximum.reduce([k, g])[:9000], 90)
     recording(src / "2026-10-30_kenneth.mkv", k[1200:10200], np.maximum.reduce([j, g])[1200:10200], 90)
     recording(src / "2026-10-30_jesper.mkv", g[500:9500], np.maximum.reduce([j, k])[500:9500], 90)
-    session.sync_session(sdir)
+    result = session.sync_session(sdir)
 
     p = T.load(project)
     tracks = {(t.name, t.audio): t for t in p.tracks}
@@ -183,4 +184,4 @@ def test_guest_gets_own_tracks_and_crew_may_use_full_names(tmp_path, capsys):
     assert tracks["Kenneth Voice", True].entries[0].start == 50 + 120
     order = [t.name for t in p.tracks if not t.audio]
     assert order.index("Jesper Game") == order.index("Assets") - 1   # under intro and namecards
-    assert "added the video track 'Jesper Game'" in capsys.readouterr().out
+    assert ("Jesper Game", False) in result.added_tracks

@@ -1,12 +1,13 @@
 import io
-import unittest
 import tempfile
+import unittest
 from contextlib import redirect_stdout
 from datetime import date
 from pathlib import Path
 from unittest import mock
 from xml.sax.saxutils import escape
 
+from kuliss import cli
 from kuliss import notes as kc
 
 
@@ -57,10 +58,8 @@ class SessionTree:
         return self.dir / f'{self.dir.name}.md'
 
     def run(self, dry_run=False):
-        buf = io.StringIO()
-        with redirect_stdout(buf):
-            self.warnings = kc.process_session(self.dir, dry_run=dry_run)
-        self.stdout = buf.getvalue()
+        res = kc.process_session(self.dir, dry_run=dry_run)
+        self.warnings, self.stdout = res.warnings, '\n'.join(res.lines)
         return self.md.read_text(encoding='utf-8') if self.md.exists() else ''
 
 
@@ -520,21 +519,17 @@ class ShowTests(unittest.TestCase):
             t = SessionTree(tmp)
             t.episode('avsnitt207', NOTEWORTHY)
             t.run()
-            buf = io.StringIO()
-            with redirect_stdout(buf):
-                found = kc._show_episode(t.dir, 'avsnitt207')
-            self.assertTrue(found)
-            shown = buf.getvalue()
+            shown = kc.show_episode(t.dir, 'avsnitt207')
             self.assertIn('### avsnitt207', shown)
             self.assertIn('**Titel:**', shown)
             self.assertIn('* 06:29 A memorable quote -h', shown)
 
-    def test_show_missing_episode_returns_false(self):
+    def test_show_missing_episode_returns_none(self):
         with tempfile.TemporaryDirectory() as tmp:
             t = SessionTree(tmp)
             t.episode('avsnitt207', NOTEWORTHY)
             t.run()
-            self.assertFalse(kc._show_episode(t.dir, 'avsnitt999'))
+            self.assertIsNone(kc.show_episode(t.dir, 'avsnitt999'))
 
 
 class LimitCheckTests(unittest.TestCase):
@@ -577,7 +572,7 @@ class ScaffoldTests(unittest.TestCase):
         buf = io.StringIO()
         side_effect = answers if answers is not None else EOFError
         with redirect_stdout(buf), mock.patch('builtins.input', side_effect=side_effect):
-            kc.scaffold_session(start)
+            self.assertEqual(cli.main(['new', str(start)]), 0)
         return buf.getvalue()
 
     def test_creates_next_session_with_defaults(self):
@@ -638,6 +633,41 @@ class ScaffoldTests(unittest.TestCase):
 
 
 class DiscoveryTests(unittest.TestCase):
+
+    def test_only_avsnitt_folders_are_episodes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            t = SessionTree(tmp)
+            t.episode('avsnitt207', NOTEWORTHY)
+            t.episode('kortisar', NOTEWORTHY)       # shorts: a same-named project, no episode
+            t.episode('smaklipp', NOTEWORTHY)
+            out = t.run()
+            self.assertIn('### avsnitt207', out)
+            self.assertNotIn('kortisar', out + t.stdout)
+            self.assertNotIn('smaklipp', out + t.stdout)
+            self.assertEqual(t.warnings, 0)
+
+    def test_episode_with_one_unrenamed_project_is_found(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            t = SessionTree(tmp)
+            ep = t.episode('avsnitt224', NOTEWORTHY)
+            (ep / 'avsnitt224.kdenlive').rename(ep / 'avsnittXX28.kdenlive')
+            self.assertIn('* 06:29 A memorable quote -h', t.run())
+            (ep / 'copy.kdenlive').write_text(kdenlive_xml(), encoding='utf-8')
+            t.run()                                 # two candidates: which one is the episode?
+            self.assertEqual(t.warnings, 1)
+            self.assertIn('2 .kdenlive files', t.stdout)
+
+    def test_cli_prints_the_report_and_flags_warnings(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            t = SessionTree(tmp)
+            t.episode('avsnitt207', NOTEWORTHY)
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                self.assertEqual(cli.main(['notes', str(t.dir)]), 0)
+                self.assertEqual(cli.main(['notes', '--show', 'avsnitt207', str(t.dir)]), 0)
+                self.assertEqual(cli.main(['notes', '--show', 'avsnitt999', str(t.dir)]), 1)
+            self.assertIn('avsnitt207: Noteworthy (2)', buf.getvalue())
+            self.assertIn('#### Noteworthy', buf.getvalue())
 
     def test_walks_up_from_episode_dir(self):
         with tempfile.TemporaryDirectory() as tmp:

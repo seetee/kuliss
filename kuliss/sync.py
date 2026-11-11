@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from .config import die
+from .errors import die
 from .vad import RATE, decode
 
 ENV_RATE = 100      # Hz; the envelope's 10 ms steps are the sync resolution

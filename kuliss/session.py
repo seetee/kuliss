@@ -1,27 +1,27 @@
 """kuliss sync: put a session's recordings, in sync, on the session project's tracks.
 
-    kuliss sync [SESSION_DIR]
-
 Each recording in sources/ is <date>_<initial>.mkv (a guest: <date>_<name>.mkv) with
 audio streams titled "Comms", "Voice audio" and "Game audio". Each player's voice is
 heard in the others' Comms streams, which is what lines the files up.
 """
 
-import argparse
+import logging
 import math
+import os
 import re
-import sys
 import time
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import av
 
 from . import sync, timeline
-from .config import VoiceError, die
-from .notes import TALLY_NAMES, _discover
+from .errors import die
+from .notes import TALLY_NAMES
+
+log = logging.getLogger(__name__)
 
 NAMES = dict(TALLY_NAMES)   # initial -> player
 CREW = {n.lower(): (i, n) for i, n in TALLY_NAMES}
@@ -43,6 +43,16 @@ class Recording:
     length: int               # frames
 
 
+@dataclass
+class SyncResult:
+    path: Path                                  # the patched project
+    backup: Path
+    reference: str                              # whose recording is the clock
+    offsets: dict[str, tuple[float, float]]     # name -> (s after the reference, confidence)
+    added_tracks: list[tuple[str, bool]] = field(default_factory=list)   # (name, audio?)
+    seconds: float = 0.0                        # analysis time
+
+
 def create_project(template: Path, dest: Path) -> None:
     """A new session project from the template, with the template's relative asset
     paths made absolute so the project can live in the session folder."""
@@ -61,7 +71,13 @@ def create_project(template: Path, dest: Path) -> None:
     for e in root.iter("property"):   # Kdenlive keys its cache and proxies on this
         if e.get("name") == "kdenlive:docproperties.documentid":
             e.text = str(int(time.time() * 1000))
-    tree.write(dest, encoding="utf-8", xml_declaration=True)
+    tmp = dest.with_name(dest.name + ".partial")
+    try:
+        tree.write(tmp, encoding="utf-8", xml_declaration=True)
+        os.replace(tmp, dest)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 def probe(path: Path, fps: float) -> Recording | None:
@@ -74,8 +90,8 @@ def probe(path: Path, fps: float) -> Recording | None:
     elif len(tag) > 1:   # a guest: all their tracks carry their name
         i = name = tag.capitalize()
     else:
-        print(f"WARNING: {path.name}: the name doesn't end in _<initial> of a known player "
-              f"({', '.join(NAMES)}) or _<guest name>; skipped")
+        log.warning("%s: the name doesn't end in _<initial> of a known player (%s) or "
+                    "_<guest name>; skipped", path.name, ", ".join(NAMES))
         return None
     try:
         with av.open(str(path)) as c:
@@ -90,7 +106,8 @@ def probe(path: Path, fps: float) -> Recording | None:
     return Recording(path, i, name, streams, length)
 
 
-def sync_session(session_dir: Path) -> None:
+def sync_session(session_dir: Path) -> SyncResult:
+    """Place sources/*.mkv on the session project's tracks, lined up on the call audio."""
     path = session_dir / f"{session_dir.name}.kdenlive"
     if not path.is_file():
         die(f"no {path.name} in {session_dir} (kuliss new creates it)")
@@ -109,22 +126,19 @@ def sync_session(session_dir: Path) -> None:
                 die(f"the {name!r} track already has clips; clear the recordings' tracks "
                     "to sync again")
 
-    print(f"{path.name}: syncing {len(recs)} recordings on their call audio")
     t0 = time.monotonic()
     keys = [(r, t) for r in recs for t in ("Voice audio", "Comms")]
     with ThreadPoolExecutor(len(keys)) as pool:
         env = dict(zip(((r.name, t) for r, t in keys),
                        pool.map(lambda k: sync.envelope(str(k[0].path), k[0].streams[k[1]]),
-                                keys)))
+                                keys), strict=True))
     ref = recs[0]
-    offsets = {ref.name: 0.0}
-    print(f"  {ref.name:<10} reference")
+    offsets, found, added = {ref.name: 0.0}, {}, []
     for r in recs[1:]:
-        offsets[r.name], conf = sync.offset(env[ref.name, "Voice audio"], env[ref.name, "Comms"],
-                                            env[r.name, "Voice audio"], env[r.name, "Comms"],
-                                            r.name)
-        print(f"  {r.name:<10} {offsets[r.name]:+9.2f} s   (confidence {conf:.0f})")
-    print(f"  analysed in {time.monotonic() - t0:.0f} s")
+        found[r.name] = sync.offset(env[ref.name, "Voice audio"], env[ref.name, "Comms"],
+                                    env[r.name, "Voice audio"], env[r.name, "Comms"], r.name)
+        offsets[r.name] = found[r.name][0]
+    seconds = time.monotonic() - t0
 
     # recordings start where the intro music ends (the template's Assets audio track)
     intro = tracks.get(("Assets", True))
@@ -139,25 +153,7 @@ def sync_session(session_dir: Path) -> None:
             if (name, is_audio) not in tracks:   # a guest, usually
                 slug = re.sub(r"\W+", "_", name.lower()) + ("_a" if is_audio else "_v")
                 timeline._ensure_track(proj, is_audio, name, f"kuliss_{slug}", under="Assets")
-                print(f"  added the {'audio' if is_audio else 'video'} track {name!r}")
+                added.append((name, is_audio))
             timeline.place(proj, name, is_audio,
                            audio[r.streams[title]] if is_audio else video, kid, start, r.length)
-    backup = timeline.write(proj, path, mtime)
-    print(f"Updated {path.name} (backup: {backup.name}). "
-          "If it is open in Kdenlive, reopen it without saving first.")
-
-
-def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(prog="kuliss sync", description=__doc__.split("\n")[0])
-    ap.add_argument("directory", nargs="?", default=".",
-                    help="the session directory, or any directory inside it (default: .)")
-    a = ap.parse_args(argv)
-    try:
-        sessions = _discover(Path(a.directory).resolve())
-        if len(sessions) != 1:
-            die("run it inside one session directory, or name one")
-        sync_session(sessions[0])
-    except VoiceError as e:
-        print(f"ERROR: {e}", file=sys.stderr)
-        return 1
-    return 0
+    return SyncResult(path, timeline.write(proj, path, mtime), ref.name, found, added, seconds)

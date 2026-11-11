@@ -14,17 +14,22 @@ import time
 import uuid
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, replace
+from fractions import Fraction
 from pathlib import Path
 
 import numpy as np
 
-from .config import Player, die
+from .config import Player
+from .errors import die
 
-TRACK_NAME = "indicate-speaker"
-CLIP_PREFIX = "indicate-speaker"
+TRACK_NAME = "kuliss speaker"
+CLIP_PREFIX = "kuliss speaker"
 SUPPORTED_VERSIONS = {"1.1"}   # kdenlive:docproperties.version (Kdenlive 23.08 - 26.08)
 PICTURES = {"avformat", "avformat-novalidate", "qimage", "pixbuf"}   # video and image clips
 TRANSFORMS = {"qtblend", "affine"}   # an entry with one of these is placed, not full-screen
+# what the editor may have set on our bin clips in Kdenlive; kept across re-runs
+EDITOR_PROPS = ("kdenlive:folderid", "kdenlive:markers", "kdenlive:rating", "kdenlive:tags",
+                "kdenlive:description")
 
 
 @dataclass
@@ -39,11 +44,9 @@ class Entry:
 
 @dataclass
 class Track:
-    index: int         # position among the sequence's <track>s (0 is the black background)
     name: str
     audio: bool
     hidden: bool       # video hidden / audio muted
-    tractor: ET.Element
     entries: list[Entry]
 
 
@@ -52,6 +55,7 @@ class Project:
     tree: ET.ElementTree
     seq: ET.Element    # the sequence tractor being edited
     fps: float
+    rate: Fraction     # fps exactly (60000/1001), for the encoder
     width: int
     height: int
     length: int        # frames
@@ -106,7 +110,8 @@ def _read(path: Path, tree: ET.ElementTree) -> Project:
     prof = root.find("profile")
     if root.tag != "mlt" or prof is None:
         die(f"{path} is not a Kdenlive project")
-    fps = int(prof.get("frame_rate_num")) / int(prof.get("frame_rate_den"))
+    rate = Fraction(int(prof.get("frame_rate_num")), int(prof.get("frame_rate_den")))
+    fps = float(rate)
     byid = {e.get("id"): e for e in root if e.get("id")}
 
     bin_props = props(byid["main_bin"]) if "main_bin" in byid else {}
@@ -124,8 +129,17 @@ def _read(path: Path, tree: ET.ElementTree) -> Project:
     if seq is None:
         die(f"{path.name}: cannot tell which timeline sequence to use")
 
+    # Kdenlive saves paths below the project folder relative to the root attribute;
+    # a project moved by hand still finds them next to itself
+    bases = [Path(b) for b in (root.get("root"), path.resolve().parent) if b]
+
+    def resolve(resource: str) -> str:
+        if not resource or Path(resource).is_absolute():
+            return resource
+        return next((str(b / resource) for b in bases if (b / resource).is_file()), resource)
+
     tracks = []
-    for i, ref in enumerate(seq.findall("track")):
+    for ref in seq.findall("track"):
         t = byid.get(ref.get("producer"))
         if t is None or t.tag != "tractor":
             continue                          # the black background track
@@ -145,13 +159,13 @@ def _read(path: Path, tree: ET.ElementTree) -> Project:
                                 for f in c.findall("filter"))
                     fullscreen = (sp.get("mlt_service") in PICTURES and not moved
                                   and sp.get("video_index") != "-1")
-                    entries.append(Entry(pos, b - a + 1, sp.get("resource", ""), a,
+                    entries.append(Entry(pos, b - a + 1, resolve(sp.get("resource", "")), a,
                                          int(sp.get("audio_index") or -1), fullscreen))
                     pos += b - a + 1
-        tracks.append(Track(i, p.get("kdenlive:track_name", ""),
+        tracks.append(Track(p.get("kdenlive:track_name", ""),
                             p.get("kdenlive:audio_track") == "1",
-                            bool(subs) and subs[0].get("hide") == "both", t, entries))
-    return Project(tree, seq, fps, int(prof.get("width")), int(prof.get("height")),
+                            bool(subs) and subs[0].get("hide") == "both", entries))
+    return Project(tree, seq, fps, rate, int(prof.get("width")), int(prof.get("height")),
                    frames(seq.get("out"), fps) + 1, tracks)
 
 
@@ -207,7 +221,7 @@ def view_spans(view: np.ndarray, min_len: int) -> list[tuple[int, int, int]]:
     before them."""
     edges = (np.flatnonzero(np.diff(view)) + 1).tolist()
     spans = [(0, 0, -1)]   # a leading "no view" run absorbs a short first run
-    for s, e in zip([0, *edges], [*edges, len(view)]):
+    for s, e in zip([0, *edges], [*edges, len(view)], strict=True):
         who = int(view[s])
         if e - s < min_len or spans[-1][2] == who:
             spans[-1] = (spans[-1][0], e, spans[-1][2])
@@ -257,29 +271,30 @@ def _ensure_clip(project: Project, key: str, resource: Path, length: int,
     if kid is None:   # sequences (tractors) carry bin ids too
         taken = (props(e).get("kdenlive:id", "") for e in root)
         kid = str(1 + max((int(k) for k in taken if k.isdigit()), default=0))
-        _new_chain(project, f"indspk_{key}_bin", kid)
-        ET.SubElement(main_bin, "entry", producer=f"indspk_{key}_bin")
+        _new_chain(project, f"kuliss_speaker_{key}_bin", kid)
+        ET.SubElement(main_bin, "entry", producer=f"kuliss_speaker_{key}_bin")
     in_bin = {en.get("producer") for en in main_bin.findall("entry")}
     copies = [e for e in root if e.tag in ("chain", "producer")
               and props(e).get("kdenlive:id") == kid]
     if all(e.get("id") in in_bin for e in copies):
-        copies.append(_new_chain(project, f"indspk_{key}", kid))
+        copies.append(_new_chain(project, f"kuliss_speaker_{key}", kid))
 
     fields = {
         "length": length, "eof": "pause", "resource": str(resource),
         "mlt_service": "avformat-novalidate", "seekable": 1,
         "audio_index": 0 if audio else -1, "video_index": -1 if audio else 0,
-        "kdenlive:clipname": clipname, "kdenlive:folderid": -1,
-        "kdenlive:clip_type": 1 if audio else 2,
+        "kdenlive:clipname": clipname, "kdenlive:clip_type": 1 if audio else 2,
     }
     control = next((props(e)["kdenlive:control_uuid"] for e in copies
-                    if props(e).get("kdenlive:control_uuid")), "{%s}" % uuid.uuid4())
+                    if props(e).get("kdenlive:control_uuid")), f"{{{uuid.uuid4()}}}")
     timeline_id = None
     for e in copies:
+        kept = {k: v for k, v in props(e).items() if k in EDITOR_PROPS}
         for p in e.findall("property"):   # drop stale probe data (hash, meta.*)
             e.remove(p)
         e.set("out", str(length - 1))
-        for k, v in {"kdenlive:id": kid, "kdenlive:control_uuid": control, **fields}.items():
+        for k, v in {"kdenlive:id": kid, "kdenlive:control_uuid": control, **fields,
+                     "kdenlive:folderid": -1, **kept}.items():
             set_prop(e, k, v)
         if e.get("id") not in in_bin:
             set_prop(e, "set.test_image" if audio else "set.test_audio", 1)
@@ -344,7 +359,7 @@ def _ensure_track(project: Project, audio: bool, name: str = TRACK_NAME,
                     pl.remove(c)
             return pls[0]
 
-    base = base or ("indspk_audio" if audio else "indspk_video")
+    base = base or ("kuliss_speaker_audio" if audio else "kuliss_speaker_video")
     if base in byid:
         die(f"project already has an element with id {base!r} that is not ours")
     tractor = ET.Element("tractor", {"id": base, "in": "0", "out": str(project.length - 1)})
@@ -401,7 +416,7 @@ def patch(project: Project, overlay: Path, rect: tuple[int, int, int, int],
     vpl = _ensure_track(project, audio=False)
     en = ET.SubElement(vpl, "entry", {"producer": vprod, "in": "0", "out": str(L - 1)})
     set_prop(en, "kdenlive:id", vid)
-    f = ET.SubElement(en, "filter", id="indspk_placement")
+    f = ET.SubElement(en, "filter", id="kuliss_speaker_placement")
     x, y, w, h = rect
     for k, v in {"rotate_center": 1, "mlt_service": "qtblend", "kdenlive_id": "qtblend",
                  "compositing": 0, "distort": 0, "rect": f"0={x} {y} {w} {h} 1.000000",
@@ -461,7 +476,7 @@ def add_source(project: Project, path: Path, length: int,
               "mlt_service": "avformat-novalidate", "seekable": 1,
               "audio_index": streams[0], "video_index": 0,
               "kdenlive:clipname": path.name, "kdenlive:folderid": -1, "kdenlive:clip_type": 0,
-              "kdenlive:control_uuid": "{%s}" % uuid.uuid4()}
+              "kdenlive:control_uuid": f"{{{uuid.uuid4()}}}"}
 
     def chain(cid, **extra):
         ch = _new_chain(project, cid, kid)

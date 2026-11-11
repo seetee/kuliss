@@ -1,21 +1,17 @@
 """The theme: one TOML per game, holding the look, the sound and the players."""
 
-import sys
+import logging
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
+from .errors import VoiceError, die  # noqa: F401  (VoiceError: re-exported)
+
+log = logging.getLogger(__name__)
+
 POSITIONS = ("top-left", "top", "top-right", "left", "right",
              "bottom-left", "bottom", "bottom-right")   # corners and edge centres
 ORIENTATIONS = ("horizontal", "vertical")
-
-
-class VoiceError(Exception):
-    """An expected failure; main() prints it as a one-line error."""
-
-
-def die(msg: str):
-    raise VoiceError(msg)
 
 
 @dataclass(frozen=True)
@@ -41,6 +37,7 @@ class Theme:
     avatar_size: int = 48    # px; the viewed player's avatar is drawn larger
     sound_offset: float = 0.0  # s; shifts every transition sound relative to its cut
     codec: str = "ffv1"        # overlay video codec, see CODECS
+    speech_threshold: float = 0.35   # Silero speech probability that counts as talking
 
 
 def parse_colour(text: str, where: str) -> tuple[int, int, int]:
@@ -54,7 +51,7 @@ def parse_colour(text: str, where: str) -> tuple[int, int, int]:
 
 
 THEME_KEYS = {"sound", "backdrop", "font", "position", "offset", "orientation", "margin",
-              "avatar_size", "sound_offset", "codec", "player"}
+              "avatar_size", "sound_offset", "codec", "speech_threshold", "player"}
 PLAYER_KEYS = {"name", "colour", "avatar", "source", "voice_track"}
 CODECS = ("ffv1", "qtrle")   # ffv1: free/open, lossless; qtrle: ~6x smaller files
 
@@ -70,7 +67,7 @@ def load_theme(path: Path) -> Theme:
 
     def warn_unknown(table, known, where):
         for key in sorted(table.keys() - known):
-            print(f"WARNING: {where}: unknown key {key!r} (ignored; typo?)", file=sys.stderr)
+            log.warning("%s: unknown key %r (ignored; typo?)", where, key)
 
     def get(table, key, kind, default, where, check=lambda v: True, rule=""):
         """table[key] if present, else default; dies unless it is a `kind` passing `check`."""
@@ -141,4 +138,6 @@ def load_theme(path: Path) -> Theme:
                          "between -10 and 10 (s)"),
         codec=get(raw, "codec", str, "ffv1", w, lambda v: v in CODECS,
                   "one of " + ", ".join(CODECS)),
+        speech_threshold=get(raw, "speech_threshold", float, 0.35, w,
+                             lambda v: 0.1 <= v <= 0.9, "between 0.1 and 0.9"),
     )

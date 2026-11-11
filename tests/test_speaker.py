@@ -3,14 +3,15 @@
 import itertools
 import xml.etree.ElementTree as ET
 from dataclasses import replace
+from fractions import Fraction
 from pathlib import Path
 
 import numpy as np
 import pytest
 import skia
 
-from kuliss import render, timeline as T, vad
-from kuliss import speaker as cli
+from kuliss import cli, render, vad
+from kuliss import timeline as T
 from kuliss.config import Player, VoiceError, load_theme
 
 PLAYERS = tuple(Player(n, (200, 60, 90), Path("x.png"), (f"*_{n[0].lower()}.mkv",), n)
@@ -79,8 +80,8 @@ def load(tmp_path):
 def test_parse_and_view(tmp_path):
     proj = load(tmp_path)
     assert (proj.fps, proj.length) == (10, 200)
-    assert [(t.index, t.name, t.audio) for t in proj.tracks] == [
-        (1, "Henrik", True), (2, "Henrik", False), (3, "Assets", False)]
+    assert [(t.name, t.audio) for t in proj.tracks] == [
+        ("Henrik", True), ("Henrik", False), ("Assets", False)]
     view = T.view_map(proj, PLAYERS)
     assert (view[:20] == -1).all()              # full-screen intro covers Henrik
     assert (view[20:100] == 0).all()
@@ -110,10 +111,10 @@ def test_patch_adds_tracks_once_and_renumbers(tmp_path):
 
     seq = T.load(out).seq
     refs = [r.get("producer") for r in seq.findall("track")]
-    assert refs == ["black", "t_voice", "indspk_audio", "t_vh", "t_top", "indspk_video"]
+    assert refs == ["black", "t_voice", "kuliss_speaker_audio", "t_vh", "t_top", "kuliss_speaker_video"]
     b = {t.get("id"): T.props(t)["b_track"] for t in seq.findall("transition")}
-    assert b == {"x1": "1", "indspk_audio_transition": "2", "x2": "3", "x3": "4",
-                 "indspk_video_transition": "5"}
+    assert b == {"x1": "1", "kuliss_speaker_audio_transition": "2", "x2": "3", "x3": "4",
+                 "kuliss_speaker_video_transition": "5"}
     p = T.props(seq)
     assert p["kdenlive:sequenceproperties.groups"] == '[{"data": "0:10:-1"}, {"data": "3:50:-1"}]'
     assert p["kdenlive:sequenceproperties.tracksCount"] == "5"
@@ -121,16 +122,23 @@ def test_patch_adds_tracks_once_and_renumbers(tmp_path):
 
     root = ET.parse(out).getroot()
     byid = {e.get("id"): e for e in root if e.get("id")}
-    sounds = byid["indspk_audio_pl0"].findall("entry")
+    sounds = byid["kuliss_speaker_audio_pl0"].findall("entry")
     assert [(e.get("in"), e.get("out")) for e in sounds] == [("0", "24"), ("0", "9")]  # last one trimmed
-    assert byid["indspk_audio_pl0"].find("blank").get("length") == "100"
-    rect = [T.props(f)["rect"] for f in byid["indspk_video_pl0"].iter("filter")]
+    assert byid["kuliss_speaker_audio_pl0"].find("blank").get("length") == "100"
+    rect = [T.props(f)["rect"] for f in byid["kuliss_speaker_video_pl0"].iter("filter")]
     assert rect == ["0=24 24 304 171 1.000000"]
 
     again = T.load(out)                        # a re-run reuses everything we own
     T.patch(again, tmp_path / "overlay.mkv", (24, 24, 304, 171), tmp_path / "s.flac", 25, [100, 190])
     T.save(again, out)
     assert out.read_bytes() == first
+
+    # what the editor set on our bin clip in Kdenlive (a bin folder) survives a re-run
+    clip = next(e for e in again.root if e.get("id") == "kuliss_speaker_overlay_bin")
+    T.set_prop(clip, "kdenlive:folderid", 7)
+    T.set_prop(clip, "meta.stale", "x")
+    T.patch(again, tmp_path / "overlay.mkv", (24, 24, 304, 171), tmp_path / "s.flac", 25, [100, 190])
+    assert T.props(clip)["kdenlive:folderid"] == "7" and "meta.stale" not in T.props(clip)
 
 
 def test_label_text_contrast_always_passes_wcag_aa():
@@ -148,13 +156,17 @@ def test_canvas_matches_frame_aspect():
         assert lay.panel.width() <= lay.W and lay.panel.height() <= lay.H
         assert all(lay.panel.contains(x, y) for x, y in lay.slots)
         x, y, w, h = render.placement(theme, lay, 1920, 1080)
-        assert (x + w, y + h) == (1920 - theme.margin, 1080 - theme.margin)
+        # the panel sits at the margin; the canvas reaches past it by the shadow's inset
+        assert (x + lay.panel.right(), y + lay.panel.bottom()) == (1920 - theme.margin,
+                                                                   1080 - theme.margin)
+        assert lay.panel.left() >= lay.inset and lay.panel.top() >= lay.inset
 
 
 def test_decode_trims_from_the_asked_start(tmp_path):
     """A seek can land at pts 0; decode must still return the asked window."""
-    import av
     from fractions import Fraction
+
+    import av
     sr, n = 48000, 48000 * 6
     ts = np.arange(n) / sr
     pcm = (0.3 * np.sin(2 * np.pi * 440 * ts) * (ts >= 3)).astype(np.float32)   # tone from 3 s
@@ -178,12 +190,37 @@ def test_vad_smoothing():
     hang = round(vad.HANGOVER * vad.RATE / vad.WINDOW)
     probs = np.zeros(100)
     probs[10:40] = 0.9          # speech
-    probs[40:43] = 0.4          # dip between the thresholds: stays on
+    probs[40:43] = 0.3          # dip between the thresholds: stays on
     probs[43:45] = 0.9
     probs[70:71] = 0.9          # a click: shorter than MIN_BURST once the hangover is discounted
+    probs[85:88] = 0.9          # a short word ("ja", 96 ms) is kept
     on = vad.smooth(probs)
-    assert on[10:45 + hang - 1].all() and not on[45 + hang:].any()
-    assert not on[:10].any()
+    assert on[10 - vad.LEAD:45 + hang - 1].all()        # lit a little before the onset
+    assert not on[:10 - vad.LEAD].any() and not on[45 + hang:85 - vad.LEAD].any()
+    assert on[85:88].all()
+    assert not vad.smooth(probs, 0.95).any()            # the theme's speech_threshold
+
+
+def test_voice_level_follows_loudness_and_clips_get_a_warmup(monkeypatch):
+    pcm = np.zeros(4 * vad.WINDOW, np.float32)
+    pcm[:vad.WINDOW], pcm[vad.WINDOW:2 * vad.WINDOW] = 0.3, 0.03     # loud, 20 dB quieter
+    pcm[3 * vad.WINDOW:] = 0.3                                       # loud, but not speech
+    level = vad.window_levels(pcm, np.array([True, True, True, False]))
+    assert level[0] > 0.9 and 0.2 < level[1] < 0.5 and level[2] == np.float32(0.05)
+    assert level[3] == 0
+
+    asked = []
+
+    def decode(path, stream, start, dur):
+        asked.append((start, dur))
+        return np.full(round(dur * vad.RATE), 0.1, np.float32)
+    monkeypatch.setattr(vad, "decode", decode)
+    monkeypatch.setattr(vad, "speech_windows", lambda pcm, on_at: np.ones(len(pcm) // vad.WINDOW, bool))
+    out = vad.talking([T.Entry(10, 50, "x", 100, 1, False), T.Entry(70, 20, "x", 2, 1, False)],
+                      10.0, 100)
+    assert asked == [(9.5, 5.5), (0.0, 2.2)]            # 0.5 s before the clip, when there is any
+    assert (out[10:60] > 0).all() and (out[70:90] > 0).all()
+    assert not out[:10].any() and not out[60:70].any() and not out[90:].any()
 
 
 def test_rerun_after_kdenlive_renamed_our_ids(tmp_path):
@@ -191,7 +228,7 @@ def test_rerun_after_kdenlive_renamed_our_ids(tmp_path):
     T.patch(proj, tmp_path / "overlay.mkv", (24, 24, 304, 171), tmp_path / "s.flac", 25, [100])
     out = tmp_path / "out.kdenlive"
     T.save(proj, out)
-    out.write_text(out.read_text().replace("indspk_", "kd"))   # Kdenlive renumbers ids on save
+    out.write_text(out.read_text().replace("kuliss_speaker_", "kd"))   # Kdenlive renumbers ids on save
 
     again = T.load(out)
     T.patch(again, tmp_path / "overlay.mkv", (24, 24, 304, 171), tmp_path / "s.flac", 30, [100])
@@ -199,12 +236,12 @@ def test_rerun_after_kdenlive_renamed_our_ids(tmp_path):
     root = ET.parse(out).getroot()
     byid = {e.get("id"): e for e in root if e.get("id")}
     names = [T.props(t).get("kdenlive:track_name") for t in root.iter("tractor")]
-    assert names.count("indicate-speaker") == 2
+    assert names.count("kuliss speaker") == 2
     ours = [e for e in root if e.tag == "chain"
-            and T.props(e).get("kdenlive:clipname", "").startswith("indicate-speaker")]
+            and T.props(e).get("kdenlive:clipname", "").startswith("kuliss speaker")]
     assert len(ours) == 4                                  # bin + timeline copy, twice
     sound_entries = [e for pl in root.iter("playlist") for e in pl.findall("entry")
-                     if T.props(byid[e.get("producer")]).get("kdenlive:clipname") == "indicate-speaker sound"]
+                     if T.props(byid[e.get("producer")]).get("kdenlive:clipname") == "kuliss speaker sound"]
     assert [e.get("out") for e in sound_entries] == ["29", "29"]   # bin entry + the one sound, both refreshed
 
 
@@ -237,10 +274,10 @@ def test_bad_theme_values_are_clear_errors(tmp_path, extra, message):
         load_theme(write_theme(tmp_path, extra))
 
 
-def test_theme_warns_about_typos_and_takes_source_lists(tmp_path, capsys):
+def test_theme_warns_about_typos_and_takes_source_lists(tmp_path, caplog):
     theme = load_theme(write_theme(tmp_path, 'orientaton = "vertical"',
                                    'source = ["*_k.mkv", "*_k2.mkv"]'))
-    assert "unknown key 'orientaton'" in capsys.readouterr().err
+    assert "unknown key 'orientaton'" in caplog.text
     assert theme.orientation == "horizontal" and theme.players[0].source == ("*_k.mkv", "*_k2.mkv")
 
 
@@ -268,12 +305,14 @@ def test_render_is_lossless_with_alpha(tmp_path, codec):
     painter = render.Painter(theme, render.layout(theme, 1920, 1080))
     out = tmp_path / ("o" + render.CODECS[codec][0])
     render.render(painter, codec, [(0, 12, 0)], [np.r_[np.zeros(6, bool), np.ones(6, bool)]],
-                  30.0, 12, out)
+                  Fraction(30), 12, out)
     with av.open(str(out)) as c:
         frames = [f.to_ndarray(format="bgra") for f in c.decode(video=0)]
     assert len(frames) == 12 and not (tmp_path / (out.name + ".partial")).exists()
     want = painter.draw(1.0, -1, 0, 1.0, (1.0,))       # last frame: fully faded in, talking
     assert (frames[-1] == want).all()
+    quiet = painter.draw(1.0, -1, 0, 1.0, (1.0,), (0.25,))
+    assert (quiet != want).any()                       # glow and bars follow the voice level
     assert frames[-1][..., 3].min() == 0 and frames[-1][..., 3].max() == 255   # real alpha
 
 
@@ -286,7 +325,7 @@ def test_new_clip_ids_avoid_sequence_ids(tmp_path):
     T.patch(proj, tmp_path / "o.mkv", (0, 0, 16, 9), tmp_path / "s.flac", 5, [100])
     ids = {T.props(e).get("kdenlive:clipname"): T.props(e).get("kdenlive:id")
            for e in proj.root if e.tag == "chain"}
-    assert ids["indicate-speaker overlay"] == "41" and ids["indicate-speaker sound"] == "42"
+    assert ids["kuliss speaker overlay"] == "41" and ids["kuliss speaker sound"] == "42"
 
 
 def test_malformed_project_is_a_clear_error(tmp_path):
@@ -337,3 +376,14 @@ def test_absent_player_is_left_out(tmp_path):
     p.write_text(PROJECT.replace('<entry producer="c_h" in="100" out="299"/>', ""))
     assert T.present(T.load(p), PLAYERS[:1]) == ()
     assert T.present(load(tmp_path), PLAYERS[:1]) == PLAYERS[:1]
+
+
+def test_relative_sources_resolve_against_the_project_not_the_cwd(tmp_path, monkeypatch):
+    """Kdenlive saves paths below the project folder relative to the root attribute."""
+    (tmp_path / "sources").mkdir()
+    (tmp_path / "sources" / "2025-08-23_h.mkv").write_bytes(b"x")
+    p = tmp_path / "ep.kdenlive"
+    p.write_text(PROJECT.replace("/src/2025-08-23_h.mkv", "sources/2025-08-23_h.mkv"))
+    monkeypatch.chdir(tmp_path.parent)
+    voice = T.voice_entries(T.load(p), PLAYERS[0])
+    assert voice[0].resource == str(tmp_path / "sources" / "2025-08-23_h.mkv")

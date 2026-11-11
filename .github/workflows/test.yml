@@ -4,6 +4,9 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ${{ matrix.os }}
@@ -11,16 +14,25 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
-        python-version: ["3.11", "3.14"]
+        python-version: ["3.12", "3.14"]
     steps:
       - uses: actions/checkout@v4
       - if: runner.os == 'Linux'
         run: sudo apt-get install -y --no-install-recommends libegl1   # skia-python loads libEGL
       - uses: astral-sh/setup-uv@v6
-      - run: uv run --python ${{ matrix.python-version }} pytest -v
+      - run: uv run --locked --python ${{ matrix.python-version }} pytest -v
+
+  lowest:   # keeps the minimum versions in pyproject.toml honest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get install -y --no-install-recommends libegl1
+      - uses: astral-sh/setup-uv@v6
+      - run: uv run --python 3.12 --resolution lowest-direct pytest
 
   lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: pipx run ruff check --select E,F --ignore E501 .
+      - uses: astral-sh/setup-uv@v6
+      - run: uv run --locked ruff check   # ruff's version comes from uv.lock

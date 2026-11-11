@@ -4,7 +4,8 @@
   in the player's colour; on a cut the label slides over, blending colour, and the
   avatars re-size;
 - who is talking: a ring in the player's colour plus a small badge with sound
-  bars (so it never relies on colour alone), faded in and out;
+  bars (so it never relies on colour alone), faded in and out; the ring's glow
+  and the bars move with the voice level;
 - when no player's view is on screen (intro, outro, full-screen assets) the
   whole overlay fades out.
 
@@ -12,9 +13,9 @@ The canvas has the profile's aspect ratio, so MLT maps it 1:1 onto a
 qtblend rect of the same size; no scaling maths in Kdenlive.
 """
 
+import logging
 import math
 import os
-import sys
 from dataclasses import dataclass
 from fractions import Fraction
 from pathlib import Path
@@ -23,10 +24,15 @@ import av
 import numpy as np
 import skia
 
-from .config import Theme, die
+from .config import Theme
+from .errors import die
+
+log = logging.getLogger(__name__)
 
 FADE = 0.30       # s; overlay in/out and the cut transition
 TALK_FADE = 0.08  # s; talking marker in/out
+LEVEL_FALL = 0.25  # s for the voice level to fall from full to nothing (it rises at once)
+LEVEL_STEPS = 8    # voice levels drawn; few enough that the frame cache keeps hitting
 DIM = 0.6         # opacity of avatars that are neither viewed nor talking
 BLACK, WHITE = (0, 0, 0), (255, 255, 255)
 
@@ -35,7 +41,8 @@ BLACK, WHITE = (0, 0, 0), (255, 255, 255)
 # without checking that its alpha survives there (VP8/VP9 WebM alpha does not).
 CODECS = {
     "ffv1": (".mkv", "matroska", "bgra",
-             {"level": "3", "slices": "4", "slicecrc": "1", "context": "1"}),
+             # encoding is ~90% of the run; 16 slices instead of 4 is 40% faster for 5% more bytes
+             {"level": "3", "slices": "16", "slicecrc": "1", "context": "1"}),
     "qtrle": (".mov", "mov", "argb", {}),
 }
 
@@ -72,6 +79,7 @@ class Layout:
     labels: tuple[tuple[float, float], ...]   # name label anchor per player: (x, top)
     label_h: float
     font_size: int
+    inset: int             # transparent border around the panel, room for its shadow
 
 
 def load_font(theme: Theme, size: int) -> skia.Font:
@@ -112,15 +120,16 @@ def layout(theme: Theme, frame_w: int, frame_h: int) -> Layout:
         pw = max(bar, label_w + 8)       # the label is kept 4 px inside the panel
         ph = pad + V + gap // 2 + label_h + pad
         run = [x + (pw - bar) / 2 for x in run]   # centre the avatars in a wider panel
+    inset = max(4, S // 8)
     g = math.gcd(frame_w, frame_h)
     aw, ah = frame_w // g, frame_h // g
-    k = math.ceil(max(pw / aw, ph / ah))
+    k = math.ceil(max((pw + 2 * inset) / aw, (ph + 2 * inset) / ah))
     W, H = aw * k, ah * k
-    if W > frame_w or H > frame_h:
-        print(f"WARNING: the overlay needs {W}x{H} px, more than the {frame_w}x{frame_h} frame; "
-              "lower avatar_size or use fewer players", file=sys.stderr)
-    px = {"left": 0, "center": (W - pw) / 2, "right": W - pw}[h]
-    py = {"top": 0, "middle": (H - ph) / 2, "bottom": H - ph}[v]
+    if frame_w < W or frame_h < H:
+        log.warning("the overlay needs %dx%d px, more than the %dx%d frame; "
+                    "lower avatar_size or use fewer players", W, H, frame_w, frame_h)
+    px = {"left": inset, "center": (W - pw) / 2, "right": W - pw - inset}[h]
+    py = {"top": inset, "middle": (H - ph) / 2, "bottom": H - ph - inset}[v]
     if vertical:
         slots = tuple((px + pw / 2, py + y) for y in run)
         labels = tuple((x, y + V / 2 + gap // 2) for x, y in slots)
@@ -128,7 +137,7 @@ def layout(theme: Theme, frame_w: int, frame_h: int) -> Layout:
         slots = tuple((px + x, py + pad + V / 2) for x in run)
         labels = tuple((x, py + pad + V + gap // 2) for x, _ in slots)
     return Layout(W, H, skia.Rect.MakeXYWH(px, py, pw, ph), S, V, slots, labels,
-                  label_h, font_size)
+                  label_h, font_size, inset)
 
 
 def anchor(position: str) -> tuple[str, str]:
@@ -144,26 +153,42 @@ def anchor(position: str) -> tuple[str, str]:
 
 def placement(theme: Theme, lay: Layout, frame_w: int, frame_h: int) -> tuple[int, int, int, int]:
     """Where the canvas goes in the frame: (x, y, w, h) for the qtblend rect.
-    The margin applies to the edges the bar sits against; offset nudges the result."""
-    m, (h, v), (dx, dy) = theme.margin, anchor(theme.position), theme.offset
+    The margin applies to the edges the bar sits against (the panel's edge, not its
+    shadow's); offset nudges the result."""
+    m, (h, v), (dx, dy) = theme.margin - lay.inset, anchor(theme.position), theme.offset
     x = {"left": m, "center": (frame_w - lay.W) // 2, "right": frame_w - m - lay.W}[h]
     y = {"top": m, "middle": (frame_h - lay.H) // 2, "bottom": frame_h - m - lay.H}[v]
     return x + dx, y + dy, lay.W, lay.H
 
 
-def ramp(target: np.ndarray, frames: float) -> np.ndarray:
-    """0/1 targets -> values that move towards them by 1/frames per frame."""
-    step = 1 / max(frames, 1)
+def follow(target: np.ndarray, up: float, down: float) -> np.ndarray:
+    """Values that chase `target`, moving at most `up` / `down` per frame, from 0."""
     out = np.empty(len(target), np.float32)
     v = 0.0
-    for i, t in enumerate(target):
-        v = min(v + step, 1.0) if t else max(v - step, 0.0)
+    for i, t in enumerate(target.tolist()):
+        v = min(v + up, t) if t > v else max(v - down, t)
         out[i] = v
     return out
 
 
 def ease(t: float) -> float:
-    return 1 - (1 - t) ** 3
+    return t * t * (3 - 2 * t)   # in and out: no jerk at either end of a cut
+
+
+def soft(c: skia.Canvas, rr: skia.RRect, rgb, alpha: float, sigma: float, dy: float = 0,
+         stroke: float = 0) -> None:
+    """A blurred copy of rr, drawn only outside it: a drop shadow (filled, moved down
+    by dy) or a glow (stroked)."""
+    paint = skia.Paint(Color=sk(rgb, alpha), AntiAlias=True,
+                       MaskFilter=skia.MaskFilter.MakeBlur(skia.kNormal_BlurStyle, sigma))
+    if stroke:
+        paint.setStyle(skia.Paint.kStroke_Style)
+        paint.setStrokeWidth(stroke)
+    c.save()
+    c.clipRRect(rr, skia.ClipOp.kDifference, True)   # never darken what sits on top
+    c.translate(0, dy)
+    c.drawRRect(rr, paint)
+    c.restore()
 
 
 class Painter:
@@ -174,7 +199,7 @@ class Painter:
         self.backdrop = load_image(theme.backdrop, "backdrop") if theme.backdrop else None
         self.font = load_font(theme, lay.font_size)
 
-    def _image(self, c: skia.Canvas, img: skia.Image, dst: skia.Rect, cover=False):
+    def _image(self, c: skia.Canvas, img: skia.Image, dst: skia.Rect, cover=False, paint=None):
         if cover:   # crop to fill dst without distortion
             s = max(dst.width() / img.width(), dst.height() / img.height())
             w, h = dst.width() / s, dst.height() / s
@@ -185,20 +210,23 @@ class Painter:
         sampling = (skia.SamplingOptions(skia.FilterMode.kNearest)
                     if img.width() < dst.width() else
                     skia.SamplingOptions(skia.FilterMode.kLinear, skia.MipmapMode.kLinear))
-        c.drawImageRect(img, src, dst, sampling)
+        c.drawImageRect(img, src, dst, sampling, paint)
 
-    def draw(self, vis: float, a: int, b: int, t: float, talk: tuple[float, ...]) -> np.ndarray:
-        """a -> b: previous and current viewed player, t: 0..1 through the cut."""
+    def draw(self, vis: float, a: int, b: int, t: float, talk: tuple[float, ...],
+             level: tuple[float, ...] | None = None) -> np.ndarray:
+        """a -> b: previous and current viewed player, t: 0..1 through the cut.
+        talk: each player's talking marker opacity; level: their voice level, 0..1."""
         lay, c = self.lay, self.surface.getCanvas()
+        level = level or talk
         c.clear(skia.ColorTRANSPARENT)
         if vis > 0 and b >= 0:
             c.saveLayerAlpha(None, round(255 * vis))
             self._panel(c)
             e = ease(t) if a >= 0 else 1.0
-            for i, p in enumerate(self.theme.players):
+            for i in range(len(self.theme.players)):
                 w = e if i == b else (1 - e) if i == a else 0.0
                 self._avatar(c, i, lay.S + (lay.V - lay.S) * w,
-                             DIM + (1 - DIM) * max(w, talk[i]), talk[i])
+                             DIM + (1 - DIM) * max(w, talk[i]), talk[i], level[i])
             self._label(c, a if a >= 0 else b, b, e)
             c.restore()
         return self.surface.makeImageSnapshot().toarray(
@@ -206,6 +234,7 @@ class Painter:
 
     def _panel(self, c):
         rr = skia.RRect.MakeRectXY(self.lay.panel, self.lay.S / 4, self.lay.S / 4)
+        soft(c, rr, BLACK, 0.45, self.lay.inset / 2.5, dy=self.lay.inset / 4)
         c.save()
         c.clipRRect(rr, doAntiAlias=True)
         if self.backdrop:
@@ -213,41 +242,49 @@ class Painter:
         c.drawPaint(skia.Paint(Color=sk(BLACK, 0.35 if self.backdrop else 0.6)))  # scrim
         c.restore()
 
-    def _avatar(self, c, i, size, alpha, talk):
+    def _avatar(self, c, i, size, alpha, talk, level):
         lay, colour = self.lay, self.theme.players[i].colour
         cx, cy = lay.slots[i]
         box = skia.Rect.MakeXYWH(cx - size / 2, cy - size / 2, size, size)
         r = size * 0.18
+        rr = skia.RRect.MakeRectXY(box, r, r)
         c.saveLayerAlpha(None, round(255 * alpha))
+        # the shadow follows the picture's own shape (avatars often have a clear border);
+        # drawn first and unclipped, then covered by the picture itself
+        self._image(c, self.avatars[i], box, cover=True, paint=skia.Paint(
+            ImageFilter=skia.ImageFilters.DropShadowOnly(0, lay.S / 24, lay.S / 16, lay.S / 16,
+                                                         sk(BLACK, 0.6))))
         c.save()
-        c.clipRRect(skia.RRect.MakeRectXY(box, r, r), doAntiAlias=True)
-        self._image(c, self.avatars[i], box)
+        c.clipRRect(rr, doAntiAlias=True)
+        self._image(c, self.avatars[i], box, cover=True)   # non-square avatars are cropped
         c.restore()
         if talk > 0:
-            ring = box.makeOutset(4, 4)
-            rr = skia.RRect.MakeRectXY(ring, r + 4, r + 4)
-            for rgb, width in ((on_colour(colour), 5), (colour, 3)):   # edge keeps it visible on any backdrop
-                c.drawRRect(rr, skia.Paint(Color=sk(rgb, talk), AntiAlias=True,
-                                           Style=skia.Paint.kStroke_Style, StrokeWidth=width))
-            self._badge(c, box.right() - 2, box.top() + 2, colour, talk)
+            ring = skia.RRect.MakeRectXY(box.makeOutset(4, 4), r + 4, r + 4)
+            # the glow breathes with the voice; the crisp ring below is the steady cue
+            soft(c, ring, colour, talk * (0.4 + 0.5 * level), lay.S / 24 * (1 + 2 * level),
+                 stroke=4 + 4 * level)
+            for rgb, width in ((on_colour(colour), 5), (colour, 3)):   # edge: visible on any backdrop
+                c.drawRRect(ring, skia.Paint(Color=sk(rgb, talk), AntiAlias=True,
+                                             Style=skia.Paint.kStroke_Style, StrokeWidth=width))
+            self._badge(c, box.right() - 2, box.top() + 2, colour, talk, level)
         c.restore()
 
-    def _badge(self, c, x, y, colour, alpha):
+    def _badge(self, c, x, y, colour, alpha, level):
         rad = max(6, self.lay.S / 6)
         c.drawCircle(x, y, rad + 1, skia.Paint(Color=sk(on_colour(colour), alpha), AntiAlias=True))
         c.drawCircle(x, y, rad, skia.Paint(Color=sk(colour, alpha), AntiAlias=True))
         bar = skia.Paint(Color=sk(on_colour(colour), alpha), AntiAlias=True)
         bw = rad / 3.5
-        for k, h in enumerate((0.5, 1.0, 0.7)):
+        for k, gain in enumerate((0.45, 0.8, 0.6)):   # three sound bars, the middle one liveliest
             bx = x + (k - 1) * bw * 1.6 - bw / 2
-            bh = rad * 1.1 * h
+            bh = rad * 1.1 * (0.3 + gain * level)
             c.drawRoundRect(skia.Rect.MakeXYWH(bx, y - bh / 2, bw, bh), bw / 2, bw / 2, bar)
 
     def _label(self, c, a, b, e):
         """One name pill sliding from player a's slot to b's, blending colour;
         the text flips half-way and is re-contrasted for every blended colour."""
         lay, pa, pb = self.lay, self.theme.players[a], self.theme.players[b]
-        colour = tuple(round(x + (y - x) * e) for x, y in zip(pa.colour, pb.colour))
+        colour = tuple(round(x + (y - x) * e) for x, y in zip(pa.colour, pb.colour, strict=True))
         name = pb.name if e >= 0.5 else pa.name
         wa, wb = (self.font.measureText(p.name) + lay.label_h for p in (pa, pb))
         w = wa + (wb - wa) * e
@@ -265,7 +302,8 @@ class Painter:
 
 
 def frame_states(spans, talking: list[np.ndarray], fps: float, n: int):
-    """Per frame: (visibility, previous viewer, viewer, transition 0..1, talk levels)."""
+    """Per frame: (visibility, previous viewer, viewer, transition 0..1, talking marker
+    opacity per player, voice level per player)."""
     shown = np.full(n, -1, np.int16)
     before = np.full(n, -1, np.int16)
     since = np.zeros(n, np.int64)
@@ -280,19 +318,26 @@ def frame_states(spans, talking: list[np.ndarray], fps: float, n: int):
         shown[s:e], before[s:e] = last, prev
         since[s:e] = np.arange(s, e) - switch
         visible[s:e] = who >= 0
-    vis = ramp(visible, FADE * fps)
-    levels = [ramp(t[:n], TALK_FADE * fps) for t in talking]
+    step = 1 / max(FADE * fps, 1)
+    vis = np.round(follow(visible.astype(np.float32), step, step), 3).tolist()
+    cut = np.round(np.minimum(since / (FADE * fps), 1.0), 3).tolist()
+    step = 1 / max(TALK_FADE * fps, 1)
+    voices = [np.asarray(t[:n], np.float32) for t in talking]
+    marks = [np.round(follow((v > 0).astype(np.float32), step, step), 2).tolist() for v in voices]
+    fall = 1 / max(LEVEL_FALL * fps, 1)
+    levels = [(np.round(follow(v, 1.0, fall) * LEVEL_STEPS) / LEVEL_STEPS).tolist()
+              for v in voices]
+    shown, before = shown.tolist(), before.tolist()
     for f in range(n):
-        yield (round(float(vis[f]), 3), int(before[f]), int(shown[f]),
-               round(min(since[f] / (FADE * fps), 1.0), 3),
-               tuple(round(float(lv[f]), 2) for lv in levels))
+        yield (vis[f], before[f], shown[f], cut[f],
+               tuple(m[f] for m in marks), tuple(lv[f] for lv in levels))
 
 
-def render(painter: Painter, codec: str, spans, talking, fps: float, n: int, out: Path,
+def render(painter: Painter, codec: str, spans, talking, rate: Fraction, n: int, out: Path,
            progress=lambda done, total: None) -> None:
-    """Encode n frames to `out` (its extension must match the codec's)."""
+    """Encode n frames at `rate` fps to `out` (its extension must match the codec's)."""
     _, container, pix_fmt, options = CODECS[codec]
-    rate = Fraction(fps).limit_denominator(1001)
+    fps = float(rate)
     tmp = out.with_name(out.name + ".partial")
     cache: dict = {}
     # steady states repeat, ramps are short-lived: keep ~64 MB of them, whatever the canvas size

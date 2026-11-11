@@ -1,24 +1,47 @@
 """kuliss speaker: add a who-we-watch / who-talks overlay to a Kdenlive project.
 
-    kuliss speaker PROJECT.kdenlive [--theme theme.toml] [--dry-run] [--preview SECS]
+    a = analyse(project)            # reads the project, finds views and speech
+    overlay = render_overlay(a)     # draws <project>-overlay.mkv
+    backup = apply(a, overlay)      # patches the project in place
 
 The theme is found next to the project or in any folder above it.
 """
 
-import argparse
 import math
-import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import av
+import numpy as np
 
 from . import render, timeline, vad
-from .config import VoiceError, die, load_theme
+from .config import Player, Theme, load_theme
+from .errors import die
 
 MIN_SPAN = 1.0   # s; views shorter than this (flash cuts) don't count as a switch
+
+
+@dataclass
+class Analysis:
+    path: Path
+    mtime: int                        # the project file's, from before it was read
+    proj: timeline.Project
+    theme: Theme                      # with only the players present in this project
+    players: tuple[Player, ...]       # those, with their sources resolved
+    absent: tuple[str, ...]           # theme players with no voice clips here
+    painter: render.Painter
+    view: np.ndarray                  # per frame: index of the viewed player, -1 for none
+    spans: list[tuple[int, int, int]]
+    cuts: list[int]                   # frames where the view switches between players
+    talking: list[np.ndarray]         # per player, per frame: voice level, 0 when silent
+    seconds: float                    # how long the speech analysis took
+
+    def stats(self) -> list[tuple[str, float, float]]:
+        """(name, % of the timeline on screen, % talking) per player."""
+        return [(p.name, 100 * float((self.view == i).mean()),
+                 100 * float((self.talking[i] > 0).mean())) for i, p in enumerate(self.players)]
 
 
 def find_theme(project: Path) -> Path:
@@ -37,28 +60,21 @@ def sound_frames(path: Path, fps: float) -> int:
         die(f"cannot read the transition sound {path}")
 
 
-def progress(done: int, total: int) -> None:
-    end = "\n" if done >= total or not sys.stdout.isatty() else ""
-    print(f"\r  rendering {100 * done // max(total, 1):3d}%", end=end, flush=True)
-
-
-def run(a) -> None:
-    project_path = Path(a.project).expanduser().resolve()
-    theme = load_theme(Path(a.theme).expanduser().resolve() if a.theme
-                       else find_theme(project_path))
-    proj = timeline.load(project_path)
-    mtime = project_path.stat().st_mtime_ns
+def analyse(project: str | Path, theme: str | Path | None = None) -> Analysis:
+    """Read the project and work out who is on screen and who talks. Writes nothing."""
+    path = Path(project).expanduser().resolve()
+    th = load_theme(Path(theme).expanduser().resolve() if theme else find_theme(path))
+    proj = timeline.load(path)
+    mtime = path.stat().st_mtime_ns
     fps = proj.fps
-    here = timeline.present(proj, theme.players)
+    here = timeline.present(proj, th.players)
     if not here:
         die("no player has clips on their voice track")
-    if len(here) < len(theme.players):   # someone missed the session: no avatar for them
-        print("Not in this project (no voice clips): "
-              + ", ".join(p.name for p in theme.players if p not in here))
-        theme = replace(theme, players=here)
-    players = timeline.with_sources(proj, theme.players)
+    absent = tuple(p.name for p in th.players if p not in here)
+    th = replace(th, players=here)   # whoever missed the session gets no avatar
+    players = timeline.with_sources(proj, th.players)
     # load every image and font now: a bad asset should fail in a second, not after the analysis
-    painter = render.Painter(theme, render.layout(theme, proj.width, proj.height))
+    painter = render.Painter(th, render.layout(th, proj.width, proj.height))
 
     view = timeline.view_map(proj, players)
     if (view < 0).all():
@@ -67,61 +83,33 @@ def run(a) -> None:
         die("no video clip belongs to any player; the project's "
             f"video clips are: {', '.join(clips)}")
     spans = timeline.view_spans(view, round(MIN_SPAN * fps))
-    cuts = timeline.cuts(spans)
     entries = [timeline.voice_entries(proj, p) for p in players]
-
-    print(f"{project_path.name}: {proj.length / fps / 60:.1f} min, {len(cuts)} view switches")
     t0 = time.monotonic()
     with ThreadPoolExecutor(len(players)) as pool:
-        talking = list(pool.map(lambda e: vad.talking(e, fps, proj.length), entries))
-    print(f"  speech detected in {time.monotonic() - t0:.0f} s")
-    for i, p in enumerate(players):
-        print(f"  {p.name:<12} on screen {100 * (view == i).mean():4.1f}%   "
-              f"talking {100 * talking[i].mean():4.1f}%")
-    if a.dry_run:
-        return
+        talking = list(pool.map(lambda e: vad.talking(e, fps, proj.length, th.speech_threshold),
+                                entries))
+    return Analysis(path, mtime, proj, th, players, absent, painter, view, spans,
+                    timeline.cuts(spans), talking, time.monotonic() - t0)
 
-    outdir = project_path.parent / "indicate-speaker"
-    outdir.mkdir(exist_ok=True)
-    n = proj.length if a.preview is None else min(proj.length, round(a.preview * fps))
-    ext = render.CODECS[theme.codec][0]
-    overlay = outdir / (("overlay-preview" if a.preview is not None else "overlay") + ext)
-    render.render(painter, theme.codec, spans, talking, fps, n, overlay, progress)
-    if a.preview is not None:
-        print(f"Preview written: {overlay}")
-        return
 
+def render_overlay(a: Analysis, preview: float | None = None,
+                   progress=lambda done, total: None) -> Path:
+    """Draw the overlay next to the project; with `preview`, only its first seconds
+    (to <project>-overlay-preview.*). Returns the file."""
+    n = a.proj.length if preview is None else min(a.proj.length, round(preview * a.proj.fps))
+    ext = render.CODECS[a.theme.codec][0]
+    out = a.path.with_name(a.path.stem + ("-overlay" if preview is None else "-overlay-preview")
+                           + ext)
+    render.render(a.painter, a.theme.codec, a.spans, a.talking, a.proj.rate, n, out, progress)
+    return out
+
+
+def apply(a: Analysis, overlay: Path) -> Path:
+    """Patch the project in place with the overlay and the switch sounds. Returns the
+    timestamped backup of the project as it was."""
+    proj, theme, fps = a.proj, a.theme, a.proj.fps
     shift = round(theme.sound_offset * fps)
-    timeline.patch(proj, overlay, render.placement(theme, painter.lay, proj.width, proj.height),
+    timeline.patch(proj, overlay, render.placement(theme, a.painter.lay, proj.width, proj.height),
                    theme.sound, sound_frames(theme.sound, fps),
-                   [c + shift for c in cuts if 0 <= c + shift < proj.length])
-    backup = timeline.write(proj, project_path, mtime)
-    print(f"Updated {project_path.name} (backup: {backup.name}). "
-          "If it is open in Kdenlive, reopen it without saving first.")
-
-
-def positive(text: str) -> float:
-    try:
-        v = float(text)
-    except ValueError:
-        v = 0
-    if not v > 0:
-        raise argparse.ArgumentTypeError(f"must be a number of seconds above 0, got {text!r}")
-    return v
-
-
-def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(prog="kuliss speaker", description=__doc__.split("\n")[0])
-    ap.add_argument("project", help="the .kdenlive project to update in place")
-    ap.add_argument("--theme", help="theme TOML (default: theme.toml next to or above the project)")
-    ap.add_argument("--dry-run", action="store_true", help="analyse and report; write nothing")
-    ap.add_argument("--preview", type=positive, metavar="SECS",
-                    help="render only the first SECS to overlay-preview.mkv; project untouched")
-    a = ap.parse_args(argv)
-    try:
-        run(a)
-    except VoiceError as e:
-        print(f"ERROR: {e}", file=sys.stderr)
-        return 1
-    return 0
-
+                   [c + shift for c in a.cuts if 0 <= c + shift < proj.length])
+    return timeline.write(proj, a.path, a.mtime)

@@ -6,7 +6,13 @@ readme = "README.md"
 license = "AGPL-3.0-or-later"
 license-files = ["LICENSE"]
 authors = [{ name = "seetee" }]
-requires-python = ">=3.11"
+requires-python = ">=3.12"
+classifiers = [
+    "Environment :: Console",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Multimedia :: Video :: Non-Linear Editor",
+]
 dependencies = [
     "numpy>=2",
     "av>=14",
@@ -18,10 +24,10 @@ dependencies = [
 Repository = "https://github.com/seetee/kuliss"
 
 [project.scripts]
-kuliss = "kuliss.__main__:main"
+kuliss = "kuliss.cli:main"
 
 [dependency-groups]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "ruff>=0.8"]
 
 [build-system]
 requires = ["hatchling"]
@@ -29,3 +35,8 @@ build-backend = "hatchling.build"
 
 [tool.ruff]
 line-length = 100
+
+[tool.ruff.lint]
+# E741 stays on: no single-letter `l`
+select = ["E", "F", "UP", "B", "SIM", "I"]
+ignore = ["E501"]   # a few long test lines; code stays under 100 by hand

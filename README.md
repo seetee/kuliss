@@ -16,7 +16,7 @@ Tools for the boring parts of producing a multi-player let's play from Kdenlive,
 
 ## Install
 
-Needs [uv](https://docs.astral.sh/uv/). All dependencies (numpy, PyAV, skia-python, silero-vad-lite) are wheels, so nothing needs compiling and no system ffmpeg is required.
+Needs [uv](https://docs.astral.sh/uv/) and Python 3.12 or newer (uv fetches it). All dependencies (numpy, PyAV, skia-python, silero-vad-lite) are wheels, so nothing needs compiling and no system ffmpeg is required.
 
 ```bash
 uv tool install git+https://github.com/seetee/kuliss.git
@@ -45,7 +45,7 @@ uv run kuliss speaker ~/episodes/avsnitt217/avsnitt217.kdenlive --dry-run
    `.md` and prints what is still missing per episode.
 6. **Overlay:** with the game's `theme.toml` next to or above the episode, run
    `kuliss speaker avsnitt<nr>/avsnitt<nr>.kdenlive --preview 90`, check
-   `indicate-speaker/overlay-preview.mkv`, then run it without `--preview`.
+   `avsnittNNN-overlay-preview.mkv` next to the project, then run it without `--preview`.
    Re-run it after any re-edit.
 7. **Publish:** render in Kdenlive and take the title, blurbs and `Kapitel`
    list for YouTube from the session `.md`.
@@ -55,7 +55,7 @@ uv run kuliss speaker ~/episodes/avsnitt217/avsnitt217.kdenlive --dry-run
 Run it on a finished (or half-finished) Kdenlive project of a multi-player let's play. It adds a small overlay that shows:
 
 - **whose view we are watching**: that player's avatar is enlarged and gets a name label in their colour;
-- **who is talking**: a ring in the player's colour plus a small sound-bars badge, so the cue never relies on colour alone;
+- **who is talking**: a ring in the player's colour plus a small sound-bars badge, so the cue never relies on colour alone; the ring's glow and the bars move with the voice level;
 - **every switch between views**: the label slides to the new player and a transition sound plays.
 
 Everything is read from the project itself: your cuts, which clip is whose, and which audio stream is each person's voice. There are no file-name dates or stream titles to configure. The overlay fades out during the intro, the outro and other full-screen clips that aren't a player's view. It works for any game: the look comes from a small theme file with a backdrop, 1–8 avatars, colours, a font and the transition sound.
@@ -65,7 +65,7 @@ Everything is read from the project itself: your cuts, which clip is whose, and 
 | Command | What it does |
 |---|---|
 | `kuliss speaker P.kdenlive --dry-run` | Reports view switches, and screen and talk time per player. Writes nothing. |
-| `kuliss speaker P.kdenlive --preview 90` | Renders the first 90 s to `indicate-speaker/overlay-preview.mkv`. The project is untouched. |
+| `kuliss speaker P.kdenlive --preview 90` | Renders the first 90 s to `P-overlay-preview.mkv`, next to the project. The project is untouched. |
 | `kuliss speaker P.kdenlive` | Renders the overlay and **updates the project in place**. |
 | `--theme path/to/theme.toml` | Uses this theme instead of the `theme.toml` found next to or above the project. |
 
@@ -74,10 +74,10 @@ Everything is read from the project itself: your cuts, which clip is whose, and 
 ### What it changes in your project
 
 - It first saves a backup, `P.kdenlive.YYYYmmdd-HHMMSS.bak`, next to the project.
-- It adds one video track (on top) and one audio track (above your other audio tracks), both named `indicate-speaker`.
-- The video track holds `indicate-speaker/overlay.mkv`, spanning the whole timeline and positioned with a Transform effect. By default the file is FFV1 with alpha, which is lossless, free and open. With `codec = "qtrle"` in the theme it is `overlay.mov` instead: also lossless with alpha, about 6× smaller, but QuickTime's codec.
+- It adds one video track (on top) and one audio track (above your other audio tracks), both named `kuliss speaker`.
+- The video track holds `P-overlay.mkv` (written next to the project), spanning the whole timeline and positioned with a Transform effect. By default the file is FFV1 with alpha, which is lossless, free and open. With `codec = "qtrle"` in the theme it is `P-overlay.mov` instead: also lossless with alpha, about 6× smaller, but QuickTime's codec.
 - The audio track holds one transition sound per view switch.
-- It adds two bin clips, `indicate-speaker overlay` and `indicate-speaker sound`.
+- It adds two bin clips, `kuliss speaker overlay` and `kuliss speaker sound`.
 
 Running it again after you re-edit reuses the same tracks and clips and regenerates their contents. Nothing else in the project is touched. To take it out again, delete the two tracks and the two bin clips.
 
@@ -98,7 +98,7 @@ Copy [`theme.example.toml`](theme.example.toml) to `theme.toml` next to the proj
   - A full-screen clip that belongs to no player hides the overlay. That means a video or image without a Transform effect, such as the intro.
   - Placed clips (namecards, picture-in-picture) and titles don't count.
   - Views shorter than 1 s are treated as flashes: they get no switch and no sound.
-- **Who talks**: [Silero VAD](https://github.com/snakers4/silero-vad) runs on each voice track, following your cuts. Two thresholds (hysteresis), a 200 ms hangover and a 120 ms minimum burst stop it from flickering on breaths and clicks.
+- **Who talks**: [Silero VAD](https://github.com/snakers4/silero-vad) runs on each voice track, following your cuts. Two thresholds (hysteresis), a 200 ms hangover and a 60 ms minimum burst stop it from flickering on clicks, while short words ("ja", "nä") still count; the marker lights up 64 ms before the detected onset. If a mic still misses words, lower `speech_threshold` in the theme (default 0.35); raise it if noise triggers the marker.
 - **Contrast**: label text is black or white, whichever contrasts more with the player's colour. That is always at least 4.5:1 (WCAG AA), so any colour is safe. The talking ring gets a black or white edge so it stays visible on any backdrop.
 
 ## `kuliss notes`: session notes
@@ -157,7 +157,8 @@ recordings/
     ├── session_26_2025-06-30.md         ← session notes file (created if missing)
     ├── session_26_2025-06-30.kdenlive   ← main rough-cut project (not processed)
     ├── sources/                          ← raw recordings (not processed)
-    ├── kortisar/                         ← YouTube shorts & TikToks (not processed)
+    ├── kortisar/                         ← YouTube shorts & TikToks (not processed,
+    │                                        even with a kortisar.kdenlive in it)
     ├── avsnitt207/
     │   ├── avsnitt207.kdenlive          ← episode project with notes ✓
     │   └── ...
@@ -166,9 +167,11 @@ recordings/
         └── ...
 ```
 
-The rule is simple: any subdirectory whose name matches the `.kdenlive` file
-inside it is treated as an episode and processed. Everything else is left
-alone. Episodes are sorted naturally (`avsnitt9` before `avsnitt10`).
+The rule is simple: a subdirectory whose name starts with `avsnitt` is an
+episode. Its project is the same-named `.kdenlive` file or, when there is none,
+the only `.kdenlive` file in it (a project not yet renamed from the
+`avsnittXX<nr>` placeholder). Everything else is left alone. Episodes are
+sorted naturally (`avsnitt9` before `avsnitt10`).
 
 ### Session file format
 
@@ -352,15 +355,29 @@ The code is in `kuliss/`. `vad.py`, `sync.py` and `render.py` don't depend on Kd
 
 | File | Contents |
 |---|---|
+| `cli.py` | The `kuliss` command: the only place that parses arguments and prints |
+| `speaker.py` | `kuliss speaker`: `analyse()`, `render_overlay()`, `apply()` |
 | `config.py` | Theme loading and validation |
 | `timeline.py` | Reading and patching the Kdenlive XML |
-| `vad.py` | Speech detection |
+| `vad.py` | Speech detection and voice level |
 | `render.py` | Drawing and encoding the overlay |
-| `speaker.py` | `kuliss speaker` |
-| `notes.py` | `kuliss notes` and `kuliss new` |
+| `notes.py` | `kuliss notes`: `process_session()`, the checklist, YouTube chapters |
+| `kdnotes.py` | Reading the Document Notes out of a `.kdenlive` file |
+| `mdoc.py` | The session Markdown file as a tree of heading blocks |
+| `scaffold.py` | `kuliss new`: `scaffold_session()` |
 | `sync.py` | Lining recordings up by their audio |
-| `session.py` | `kuliss sync`, and the project `kuliss new` creates |
-| `__main__.py` | The `kuliss` command |
+| `session.py` | `kuliss sync`: `sync_session()`, and the project `kuliss new` creates |
+| `errors.py` | `VoiceError`, the one expected-failure type |
+
+Every module but `cli.py` is a library: functions return their results and never print, so
+they can be used from Python:
+
+```python
+from kuliss import speaker
+a = speaker.analyse("avsnitt217/avsnitt217.kdenlive")
+print(a.stats())                      # (name, % on screen, % talking) per player
+speaker.apply(a, speaker.render_overlay(a))
+```
 
 ## License
 
