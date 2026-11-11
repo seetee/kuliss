@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, windows-latest]   # ubuntu-latest (26.04) could not reach apt on 2026-11-11
+        os: [ubuntu-latest, windows-latest]
         python-version: ["3.12", "3.14"]
     steps:
       - uses: actions/checkout@v4
@@ -23,7 +23,7 @@ jobs:
       - run: uv run --locked --python ${{ matrix.python-version }} pytest -v
 
   lowest:   # keeps the minimum versions in pyproject.toml honest
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libegl1
