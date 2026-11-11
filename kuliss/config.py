@@ -53,7 +53,7 @@ def parse_colour(text: str, where: str) -> tuple[int, int, int]:
 THEME_KEYS = {"sound", "backdrop", "font", "position", "offset", "orientation", "margin",
               "avatar_size", "sound_offset", "codec", "speech_threshold", "player"}
 PLAYER_KEYS = {"name", "colour", "avatar", "source", "voice_track"}
-CODECS = ("ffv1", "qtrle")   # ffv1: free/open, lossless; qtrle: ~6x smaller files
+CODECS = ("ffv1", "qtrle")   # ffv1: free/open, lossless; qtrle: about 20% smaller files, no faster
 
 
 def load_theme(path: Path) -> Theme:

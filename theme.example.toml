@@ -14,7 +14,7 @@ sound    = "../_assets/namecard/60003__qubodup__loud-swosh-16.flac"  # plays on 
 # avatar_size = 48              # px; the viewed player's avatar is drawn 25% larger
 # sound_offset = 0.0            # s; move every transition sound later (+) or earlier (-)
 # codec    = "ffv1"             # ffv1: free and open, lossless (default)
-#                               # qtrle: QuickTime Animation, lossless, ~6x smaller files
+#                               # qtrle: QuickTime Animation, lossless, about 20% smaller files
 # speech_threshold = 0.35       # 0.1-0.9; lower if the talking marker misses words,
 #                               # higher if noise sets it off
 

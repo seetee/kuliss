@@ -13,15 +13,16 @@ rule, detector tuning, overlay polish, lockfile and CI hardening).
 
 ## Keep the editor's own changes on re-run
 
-- [ ] Keep a user-adjusted overlay position. If the `qtblend` rect on our overlay entry differs
-      from what the tool last wrote, reuse it instead of resetting it. Swooshes can stay
-      regenerated, but document that in the README.
+- [ ] Check in the Kdenlive GUI that a save keeps the `kuliss:rect` property on the overlay's
+      Transform effect. If it is dropped, a moved overlay is reset on re-run, as before
+      2026-11-11; then compare against the theme's rect stored elsewhere (the bin clip).
 
 ## Speed and memory
 
 - [ ] Rendering is ~90% FFV1 encoding (about 1.2 ms per 800x450 frame at 16 slices). The only
-      big win left is fewer pixels, which the profile-aspect canvas rule forbids; `codec =
-      "qtrle"` is the existing way out. A cache for the speech analysis was measured and
+      big win left is fewer pixels, which the profile-aspect canvas rule forbids; `qtrle` is
+      no way out: measured 2026-11-11 it is no faster and only 20% smaller, now that the
+      overlay has soft shadows and glow. A cache for the speech analysis was measured and
       dropped: analysis is 14 s of a 2-minute run.
 - [ ] Stream decoded audio into Silero window by window instead of buffering the whole voice
       track (about 77 MB per player). `window_levels` and the warm-up would need to stream too.

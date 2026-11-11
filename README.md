@@ -75,11 +75,11 @@ Everything is read from the project itself: your cuts, which clip is whose, and 
 
 - It first saves a backup, `P.kdenlive.YYYYmmdd-HHMMSS.bak`, next to the project.
 - It adds one video track (on top) and one audio track (above your other audio tracks), both named `kuliss speaker`.
-- The video track holds `P-overlay.mkv` (written next to the project), spanning the whole timeline and positioned with a Transform effect. By default the file is FFV1 with alpha, which is lossless, free and open. With `codec = "qtrle"` in the theme it is `P-overlay.mov` instead: also lossless with alpha, about 6× smaller, but QuickTime's codec.
+- The video track holds `P-overlay.mkv` (written next to the project), spanning the whole timeline and positioned with a Transform effect. By default the file is FFV1 with alpha, which is lossless, free and open. With `codec = "qtrle"` in the theme it is `P-overlay.mov` instead: also lossless with alpha and about 20% smaller (no faster to render), but QuickTime's codec.
 - The audio track holds one transition sound per view switch.
 - It adds two bin clips, `kuliss speaker overlay` and `kuliss speaker sound`.
 
-Running it again after you re-edit reuses the same tracks and clips and regenerates their contents. Nothing else in the project is touched. To take it out again, delete the two tracks and the two bin clips.
+Running it again after you re-edit reuses the same tracks and clips and regenerates their contents. If you moved, resized or animated the overlay's Transform effect in Kdenlive, your version is kept; otherwise it follows the theme. Nothing else in the project is touched. To take it out again, delete the two tracks and the two bin clips.
 
 ### The theme
 

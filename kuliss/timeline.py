@@ -27,6 +27,7 @@ CLIP_PREFIX = "kuliss speaker"
 SUPPORTED_VERSIONS = {"1.1"}   # kdenlive:docproperties.version (Kdenlive 23.08 - 26.08)
 PICTURES = {"avformat", "avformat-novalidate", "qimage", "pixbuf"}   # video and image clips
 TRANSFORMS = {"qtblend", "affine"}   # an entry with one of these is placed, not full-screen
+PLACED = "kuliss:rect"   # on our overlay's Transform effect: the "x y w h" we last wrote
 # what the editor may have set on our bin clips in Kdenlive; kept across re-runs
 EDITOR_PROPS = ("kdenlive:folderid", "kdenlive:markers", "kdenlive:rating", "kdenlive:tags",
                 "kdenlive:description")
@@ -340,6 +341,18 @@ def _shift_tracks(seq: ET.Element, k: int) -> None:
         set_prop(seq, "kdenlive:sequenceproperties.tracksCount", int(n) + 1)
 
 
+def _find_track(project: Project, name: str, audio: bool) -> ET.Element | None:
+    """The sequence's track tractor with this name and kind."""
+    byid = project.byid()
+    for ref in project.seq.findall("track"):
+        t = byid.get(ref.get("producer"))
+        if (t is not None and t.tag == "tractor"
+                and props(t).get("kdenlive:track_name") == name
+                and (props(t).get("kdenlive:audio_track") == "1") == audio):
+            return t
+    return None
+
+
 def _ensure_track(project: Project, audio: bool, name: str = TRACK_NAME,
                   base: str | None = None, under: str | None = None) -> ET.Element:
     """The named track's first playlist, emptied; the track is created if missing.
@@ -347,17 +360,14 @@ def _ensure_track(project: Project, audio: bool, name: str = TRACK_NAME,
     or right under the video track named `under`."""
     seq, byid = project.seq, project.byid()
     refs = seq.findall("track")
-    for ref in refs:
-        t = byid.get(ref.get("producer"))
-        if (t is not None and t.tag == "tractor"
-                and props(t).get("kdenlive:track_name") == name
-                and (props(t).get("kdenlive:audio_track") == "1") == audio):
-            t.set("out", str(project.length - 1))
-            pls = [byid[s.get("producer")] for s in t.findall("track")]
-            for pl in pls:
-                for c in [c for c in pl if c.tag in ("entry", "blank")]:
-                    pl.remove(c)
-            return pls[0]
+    t = _find_track(project, name, audio)
+    if t is not None:
+        t.set("out", str(project.length - 1))
+        pls = [byid[s.get("producer")] for s in t.findall("track")]
+        for pl in pls:
+            for c in [c for c in pl if c.tag in ("entry", "blank")]:
+                pl.remove(c)
+        return pls[0]
 
     base = base or ("kuliss_speaker_audio" if audio else "kuliss_speaker_video")
     if base in byid:
@@ -406,6 +416,28 @@ def _ensure_track(project: Project, audio: bool, name: str = TRACK_NAME,
     return pls[0]
 
 
+def _moved_placement(project: Project) -> ET.Element | None:
+    """Our overlay's Transform effect, if the editor moved, resized or animated it in
+    Kdenlive since we placed it: then it is theirs, and a re-run keeps it as it is."""
+    t = _find_track(project, TRACK_NAME, audio=False)
+    if t is None:
+        return None
+    byid = project.byid()
+    for sub in t.findall("track"):
+        for f in byid[sub.get("producer")].iter("filter"):
+            p = props(f)
+            if p.get("mlt_service") != "qtblend" or PLACED not in p:
+                continue
+            rect = p.get("rect", "")
+            try:   # Kdenlive rewrites "0=x y w h 1.0" as "00:00:00.000=x y w h 1"; compare numbers
+                now = [float(v) for v in rect.split("=")[-1].split()[:4]]
+                same = ";" not in rect and now == [float(v) for v in p[PLACED].split()]
+            except ValueError:
+                same = False
+            return None if same else f
+    return None
+
+
 def patch(project: Project, overlay: Path, rect: tuple[int, int, int, int],
           sound: Path, sound_len: int, cut_frames: list[int]) -> None:
     """Put the overlay (full length, placed at rect) and one sound per cut on our tracks."""
@@ -413,15 +445,19 @@ def patch(project: Project, overlay: Path, rect: tuple[int, int, int, int],
     vid, vprod = _ensure_clip(project, "overlay", overlay, L, audio=False)
     aid, aprod = _ensure_clip(project, "sound", sound, sound_len, audio=True)
 
+    moved = _moved_placement(project)   # before the track is emptied
     vpl = _ensure_track(project, audio=False)
     en = ET.SubElement(vpl, "entry", {"producer": vprod, "in": "0", "out": str(L - 1)})
     set_prop(en, "kdenlive:id", vid)
-    f = ET.SubElement(en, "filter", id="kuliss_speaker_placement")
-    x, y, w, h = rect
-    for k, v in {"rotate_center": 1, "mlt_service": "qtblend", "kdenlive_id": "qtblend",
-                 "compositing": 0, "distort": 0, "rect": f"0={x} {y} {w} {h} 1.000000",
-                 "rotation": "0=0"}.items():
-        set_prop(f, k, v)
+    if moved is not None:
+        en.append(moved)
+    else:
+        f = ET.SubElement(en, "filter", id="kuliss_speaker_placement")
+        x, y, w, h = rect
+        for k, v in {"rotate_center": 1, "mlt_service": "qtblend", "kdenlive_id": "qtblend",
+                     "compositing": 0, "distort": 0, "rect": f"0={x} {y} {w} {h} 1.000000",
+                     "rotation": "0=0", PLACED: f"{x} {y} {w} {h}"}.items():
+            set_prop(f, k, v)
 
     apl = _ensure_track(project, audio=True)
     pos = 0
@@ -496,16 +532,10 @@ def add_source(project: Project, path: Path, length: int,
 def place(project: Project, track_name: str, audio: bool, producer: str, kid: str,
           start: int, length: int) -> None:
     """A whole clip at timeline frame `start` on the named (empty) track."""
-    byid = project.byid()
-    for ref in project.seq.findall("track"):
-        t = byid.get(ref.get("producer"))
-        if (t is not None and t.tag == "tractor"
-                and props(t).get("kdenlive:track_name") == track_name
-                and (props(t).get("kdenlive:audio_track") == "1") == audio):
-            break
-    else:
+    t = _find_track(project, track_name, audio)
+    if t is None:
         die(f"the project has no {'audio' if audio else 'video'} track named {track_name!r}")
-    pl = byid[t.find("track").get("producer")]
+    pl = project.byid()[t.find("track").get("producer")]
     for c in pl.findall("blank"):
         pl.remove(c)
     if start:

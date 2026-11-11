@@ -387,3 +387,24 @@ def test_relative_sources_resolve_against_the_project_not_the_cwd(tmp_path, monk
     monkeypatch.chdir(tmp_path.parent)
     voice = T.voice_entries(T.load(p), PLAYERS[0])
     assert voice[0].resource == str(tmp_path / "sources" / "2025-08-23_h.mkv")
+
+
+def test_rerun_keeps_an_overlay_the_editor_moved(tmp_path):
+    def rect(proj):
+        return [T.props(f)["rect"] for f in proj.root.iter("filter")
+                if T.props(f).get("mlt_service") == "qtblend" and T.PLACED in T.props(f)]
+
+    def run(proj, r):
+        T.patch(proj, tmp_path / "o.mkv", r, tmp_path / "s.flac", 25, [100])
+
+    proj = load(tmp_path)
+    run(proj, (24, 24, 304, 171))
+    f = next(f for f in proj.root.iter("filter") if T.PLACED in T.props(f))
+    T.set_prop(f, "rect", "00:00:00.000=24 24 304 171 1")     # Kdenlive's spelling of the same
+    run(proj, (40, 40, 304, 171))                              # the theme changed: follow it
+    assert rect(proj) == ["0=40 40 304 171 1.000000"]
+
+    f = next(f for f in proj.root.iter("filter") if T.PLACED in T.props(f))
+    T.set_prop(f, "rect", "00:00:00.000=500 300 304 171 1")   # dragged in Kdenlive: theirs now
+    run(proj, (24, 24, 304, 171))
+    assert rect(proj) == ["00:00:00.000=500 300 304 171 1"]
