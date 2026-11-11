@@ -18,7 +18,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - if: runner.os == 'Linux'
-        run: sudo apt-get install -y --no-install-recommends libegl1   # skia-python loads libEGL
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libegl1   # skia-python loads libEGL
       - uses: astral-sh/setup-uv@v6
       - run: uv run --locked --python ${{ matrix.python-version }} pytest -v
 
@@ -26,7 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: sudo apt-get install -y --no-install-recommends libegl1
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libegl1
       - uses: astral-sh/setup-uv@v6
       - run: uv run --python 3.12 --resolution lowest-direct pytest
 
@@ -35,4 +35,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
-      - run: uv run --locked ruff check   # ruff's version comes from uv.lock
+      - run: uv run --locked --python 3.12 ruff check   # ruff's version comes from uv.lock

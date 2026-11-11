@@ -17,7 +17,7 @@ dependencies = [
     "numpy>=2",
     "av>=14",
     "skia-python>=138",
-    "silero-vad-lite>=0.2",
+    "silero-vad-lite>=0.4",
 ]
 
 [project.urls]
