@@ -111,12 +111,12 @@ def test_patch_adds_tracks_once_and_renumbers(tmp_path):
 
     seq = T.load(out).seq
     refs = [r.get("producer") for r in seq.findall("track")]
-    assert refs == ["black", "t_voice", "kuliss_speaker_audio", "t_vh", "t_top", "kuliss_speaker_video"]
+    assert refs == ["black", "kuliss_speaker_audio", "t_voice", "t_vh", "t_top", "kuliss_speaker_video"]
     b = {t.get("id"): T.props(t)["b_track"] for t in seq.findall("transition")}
-    assert b == {"x1": "1", "kuliss_speaker_audio_transition": "2", "x2": "3", "x3": "4",
+    assert b == {"kuliss_speaker_audio_transition": "1", "x1": "2", "x2": "3", "x3": "4",
                  "kuliss_speaker_video_transition": "5"}
     p = T.props(seq)
-    assert p["kdenlive:sequenceproperties.groups"] == '[{"data": "0:10:-1"}, {"data": "3:50:-1"}]'
+    assert p["kdenlive:sequenceproperties.groups"] == '[{"data": "1:10:-1"}, {"data": "3:50:-1"}]'
     assert p["kdenlive:sequenceproperties.tracksCount"] == "5"
     assert p["kdenlive:sequenceproperties.videoTarget"] == "2"
 
@@ -127,6 +127,14 @@ def test_patch_adds_tracks_once_and_renumbers(tmp_path):
     assert byid["kuliss_speaker_audio_pl0"].find("blank").get("length") == "100"
     rect = [T.props(f)["rect"] for f in byid["kuliss_speaker_video_pl0"].iter("filter")]
     assert rect == ["0=24 24 304 171 1.000000"]
+    assert T.props(byid["kuliss_speaker_audio"].find("filter"))["level"] == str(T.SOUND_LEVEL)
+
+    # a project patched under the old track name: found, renamed, nothing added
+    out.write_text(out.read_text().replace(">kuliss</property>", ">kuliss speaker</property>"))
+    old = T.load(out)
+    T.patch(old, tmp_path / "overlay.mkv", (24, 24, 304, 171), tmp_path / "s.flac", 25, [100, 190])
+    T.save(old, out)
+    assert out.read_bytes() == first
 
     again = T.load(out)                        # a re-run reuses everything we own
     T.patch(again, tmp_path / "overlay.mkv", (24, 24, 304, 171), tmp_path / "s.flac", 25, [100, 190])
@@ -236,7 +244,7 @@ def test_rerun_after_kdenlive_renamed_our_ids(tmp_path):
     root = ET.parse(out).getroot()
     byid = {e.get("id"): e for e in root if e.get("id")}
     names = [T.props(t).get("kdenlive:track_name") for t in root.iter("tractor")]
-    assert names.count("kuliss speaker") == 2
+    assert names.count("kuliss") == 2
     ours = [e for e in root if e.tag == "chain"
             and T.props(e).get("kdenlive:clipname", "").startswith("kuliss speaker")]
     assert len(ours) == 4                                  # bin + timeline copy, twice
@@ -408,3 +416,39 @@ def test_rerun_keeps_an_overlay_the_editor_moved(tmp_path):
     T.set_prop(f, "rect", "00:00:00.000=500 300 304 171 1")   # dragged in Kdenlive: theirs now
     run(proj, (24, 24, 304, 171))
     assert rect(proj) == ["00:00:00.000=500 300 304 171 1"]
+
+
+def test_intro_and_outro_go_on_an_assets_track(tmp_path):
+    p = tmp_path / "ep.kdenlive"
+    load(tmp_path)
+    p.write_text(p.read_text().replace('<tractor id="seq" in="0" out="199">',
+                                       '<tractor id="seq" in="0" out="999">'))   # 100 s
+    media = {"intro_audio": (tmp_path / "i.mp3", 210), "intro_video": (tmp_path / "i.mov", 60),
+             "outro_audio": (tmp_path / "o.mp3", 400), "outro_image": (tmp_path / "o.png", 200)}
+
+    def run(duck=99.0):   # a first voice outside the intro: the default
+        proj = T.load(p)
+        T.patch(proj, tmp_path / "o.mkv", (0, 0, 16, 9), tmp_path / "s.flac", 5, [100], media, duck)
+        T.save(proj, p)
+        return T.load(p)
+
+    proj = run()
+    first = p.read_bytes()
+    # the video Assets track holds the editor's clips, and there is no audio one: both are new
+    assert [(t.name, t.audio) for t in proj.tracks] == [
+        ("Assets Kuliss", True), ("kuliss", True), ("Henrik", True), ("Henrik", False),
+        ("Assets", False), ("Assets Kuliss", False), ("kuliss", False)]
+    audio, video = (next(t for t in proj.tracks if t.name == "Assets Kuliss" and t.audio == a)
+                    for a in (True, False))
+    assert [(e.start, e.src_in, e.length) for e in audio.entries] == [(0, 15, 180), (626, 17, 374)]
+    assert [(e.start, e.src_in, e.length) for e in video.entries] == [(6, 0, 60), (798, 0, 200)]
+    assert len(proj.tracks[4].entries) == 2          # the editor's Assets clips are untouched
+    run()
+    assert p.read_bytes() == first
+    assert "00:00:06.967=0;00:00:07.450$=-15" in first.decode()   # no voice start given: 5.5 s
+
+    # an Assets track holding nothing but our clips is used as it is
+    p.write_text(first.decode().replace(">Assets Kuliss</property>", ">Assets</property>", 1))
+    assert [(t.name, t.audio) for t in run(5.0).tracks][:3] == [
+        ("Assets", True), ("kuliss", True), ("Henrik", True)]
+    assert "00:00:06.467=0;00:00:06.950$=-15" in p.read_text()   # ducked where the voices start

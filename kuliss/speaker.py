@@ -17,7 +17,7 @@ import av
 import numpy as np
 
 from . import render, timeline, vad
-from .config import Player, Theme, load_theme
+from .config import BOOKENDS, Player, Theme, load_theme
 from .errors import die
 
 MIN_SPAN = 1.0   # s; views shorter than this (flash cuts) don't count as a switch
@@ -57,7 +57,7 @@ def sound_frames(path: Path, fps: float) -> int:
         with av.open(str(path)) as c:
             return max(1, math.ceil(c.duration / av.time_base * fps))
     except (av.FFmpegError, TypeError):
-        die(f"cannot read the transition sound {path}")
+        die(f"cannot read {path}")
 
 
 def analyse(project: str | Path, theme: str | Path | None = None) -> Analysis:
@@ -82,6 +82,11 @@ def analyse(project: str | Path, theme: str | Path | None = None) -> Analysis:
                         for e in t.entries if e.resource})
         die("no video clip belongs to any player; the project's "
             f"video clips are: {', '.join(clips)}")
+    spots = timeline.bookends(proj.length, fps)
+    for key in ("intro_video", "outro_image"):   # full-screen once placed: no view there,
+        if getattr(th, key):                     # on the first run as on every later one
+            start, _, n = spots[key]
+            view[max(start, 0):max(start + n, 0)] = -1
     spans = timeline.view_spans(view, round(MIN_SPAN * fps))
     entries = [timeline.voice_entries(proj, p) for p in players]
     t0 = time.monotonic()
@@ -109,7 +114,11 @@ def apply(a: Analysis, overlay: Path) -> Path:
     timestamped backup of the project as it was."""
     proj, theme, fps = a.proj, a.theme, a.proj.fps
     shift = round(theme.sound_offset * fps)
+    card = timeline.bookends(proj.length, fps)["outro_image"][2]
+    media = {k: (p, card if k == "outro_image" else sound_frames(p, fps))
+             for k in BOOKENDS if (p := getattr(theme, k))}
     timeline.patch(proj, overlay, render.placement(theme, a.painter.lay, proj.width, proj.height),
                    theme.sound, sound_frames(theme.sound, fps),
-                   [c + shift for c in a.cuts if 0 <= c + shift < proj.length])
+                   [c + shift for c in a.cuts if 0 <= c + shift < proj.length], media,
+                   min(e.start for p in a.players for e in timeline.voice_entries(proj, p)) / fps)
     return timeline.write(proj, a.path, a.mtime)

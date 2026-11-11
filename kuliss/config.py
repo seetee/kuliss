@@ -12,6 +12,7 @@ log = logging.getLogger(__name__)
 POSITIONS = ("top-left", "top", "top-right", "left", "right",
              "bottom-left", "bottom", "bottom-right")   # corners and edge centres
 ORIENTATIONS = ("horizontal", "vertical")
+BOOKENDS = ("intro_audio", "intro_video", "outro_audio", "outro_image")
 
 
 @dataclass(frozen=True)
@@ -38,6 +39,10 @@ class Theme:
     sound_offset: float = 0.0  # s; shifts every transition sound relative to its cut
     codec: str = "ffv1"        # overlay video codec, see CODECS
     speech_threshold: float = 0.35   # Silero speech probability that counts as talking
+    intro_audio: Path | None = None   # the four below: placed on the Assets tracks,
+    intro_video: Path | None = None   # see timeline.bookends
+    outro_audio: Path | None = None
+    outro_image: Path | None = None
 
 
 def parse_colour(text: str, where: str) -> tuple[int, int, int]:
@@ -51,7 +56,7 @@ def parse_colour(text: str, where: str) -> tuple[int, int, int]:
 
 
 THEME_KEYS = {"sound", "backdrop", "font", "position", "offset", "orientation", "margin",
-              "avatar_size", "sound_offset", "codec", "speech_threshold", "player"}
+              "avatar_size", "sound_offset", "codec", "speech_threshold", "player", *BOOKENDS}
 PLAYER_KEYS = {"name", "colour", "avatar", "source", "voice_track"}
 CODECS = ("ffv1", "qtrle")   # ffv1: free/open, lossless; qtrle: about 20% smaller files, no faster
 
@@ -140,4 +145,5 @@ def load_theme(path: Path) -> Theme:
                   "one of " + ", ".join(CODECS)),
         speech_threshold=get(raw, "speech_threshold", float, 0.35, w,
                              lambda v: 0.1 <= v <= 0.9, "between 0.1 and 0.9"),
+        **{k: file(raw[k], k) for k in BOOKENDS if k in raw},
     )

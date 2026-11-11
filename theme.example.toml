@@ -18,6 +18,15 @@ sound    = "../_assets/namecard/60003__qubodup__loud-swosh-16.flac"  # plays on 
 # speech_threshold = 0.35       # 0.1-0.9; lower if the talking marker misses words,
 #                               # higher if noise sets it off
 
+# The show's intro and outro (each optional). They go on the project's "Assets" audio and
+# video tracks, or on new "Assets Kuliss" tracks if you have clips of your own there:
+# the intro music from the top, ducked where the first voice clip starts; the intro video half
+# a second in; the outro card over the last 20 s; the outro music from 17 s before the card.
+# intro_audio = "../_assets/episode-media/samkväm-intro-audio.mp3"
+# intro_video = "../_assets/episode-media/samkväm-intro-video.mov"
+# outro_audio = "../_assets/episode-media/samkväm-outro-audio.mp3"
+# outro_image = "../_assets/design-system/outro-overlay.png"
+
 # 1-8 players. `voice_track` is the Kdenlive audio track with their voice
 # (default: the player's name). Video clips from the same file(s) as that
 # track count as the player's view, whatever track they sit on; set `source`

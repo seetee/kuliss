@@ -297,8 +297,18 @@ class Painter:
                     skia.Paint(Color=sk(colour), AntiAlias=True))
         m = self.font.getMetrics()
         base = top + (lay.label_h - (m.fDescent - m.fAscent)) / 2 - m.fAscent
-        c.drawString(name, x + (w - self.font.measureText(name)) / 2, base, self.font,
-                     skia.Paint(Color=sk(on_colour(colour)), AntiAlias=True))
+        ink = skia.Paint(Color=sk(on_colour(colour)), AntiAlias=True)
+        c.drawString(name, x + (w - self.font.measureText(name)) / 2, base, self.font, ink)
+        # a camera on the pill's corner: this is whose view we watch
+        r, bx, by = max(6, lay.S / 6), x + 4, top + 1   # stays inside the panel
+        fill = skia.Paint(Color=sk(colour), AntiAlias=True)
+        c.drawCircle(bx, by, r + 1, fill)
+        c.drawCircle(bx, by, r, ink)
+        c.drawRoundRect(skia.Rect.MakeXYWH(bx - r * 0.62, by - r * 0.4, r * 0.8, r * 0.8), 1, 1, fill)
+        lens = skia.Path()
+        lens.addPoly([(bx + r * 0.1, by), (bx + r * 0.62, by - r * 0.4), (bx + r * 0.62, by + r * 0.4)],
+                     True)
+        c.drawPath(lens, fill)
 
 
 def frame_states(spans, talking: list[np.ndarray], fps: float, n: int):

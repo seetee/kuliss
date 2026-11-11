@@ -74,12 +74,13 @@ Everything is read from the project itself: your cuts, which clip is whose, and 
 ### What it changes in your project
 
 - It first saves a backup, `P.kdenlive.YYYYmmdd-HHMMSS.bak`, next to the project.
-- It adds one video track (on top) and one audio track (above your other audio tracks), both named `kuliss speaker`.
+- It adds one video track (on top) and one audio track (below your other audio tracks), both named `kuliss`. The audio track's mixer starts at −24 dB; change it in Kdenlive and a re-run keeps your level.
 - The video track holds `P-overlay.mkv` (written next to the project), spanning the whole timeline and positioned with a Transform effect. By default the file is FFV1 with alpha, which is lossless, free and open. With `codec = "qtrle"` in the theme it is `P-overlay.mov` instead: also lossless with alpha and about 20% smaller (no faster to render), but QuickTime's codec.
 - The audio track holds one transition sound per view switch.
 - It adds two bin clips, `kuliss speaker overlay` and `kuliss speaker sound`.
+- With `intro_audio`, `intro_video`, `outro_audio` and `outro_image` in the theme (each optional), it also places the show's intro and outro, with one more bin clip each. They go on the tracks named `Assets` (audio and video) when those are empty; if you have clips of your own there, it leaves them alone and uses new tracks named `Assets Kuliss`. The intro music starts at the top and is lowered 15 dB where the first voice clip starts (anywhere from 1 to 15 s in; otherwise at 5.5 s). The intro video starts half a second in. The outro card covers the last 20 s, fading in and out, and the outro music starts 17 s before the card and rises to full volume when it appears. So end your edit where the outro card should end, with about 20 s of footage for it to sit on. The overlay hides during the intro video and the outro card.
 
-Running it again after you re-edit reuses the same tracks and clips and regenerates their contents. If you moved, resized or animated the overlay's Transform effect in Kdenlive, your version is kept; otherwise it follows the theme. Nothing else in the project is touched. To take it out again, delete the two tracks and the two bin clips.
+Running it again after you re-edit reuses the same tracks and clips and regenerates their contents. If you moved, resized or animated the overlay's Transform effect in Kdenlive, your version is kept; otherwise it follows the theme. Nothing else in the project is touched. To take it out again, delete its tracks and bin clips.
 
 ### The theme
 
