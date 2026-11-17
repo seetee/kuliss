@@ -63,7 +63,7 @@ def scaffold_session(root: Path, number: int, session_date: str,
     _write_atomic(session_dir / f'{name}.md', _render(doc))
 
     if nearest_theme(session_dir) is None:
-        log.warning('no theme.toml in %s or above, so kuliss speaker will not run; put the '
+        log.warning('no theme.toml in %s or above, so kuliss finish will not run; put the '
                     "game's theme in %s (see theme.example.toml)", session_dir, root)
 
     project, warning = session_dir / f'{name}.kdenlive', None

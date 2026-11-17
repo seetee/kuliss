@@ -14,7 +14,7 @@ For Kenneth, in this order:
 
 - [x] The four intro/outro lines are in the shared PO3 `theme.toml` in the samkvam folder
       (2026-11-17). Sessions 27 and 28 still have their own copy without them, which wins there.
-- [ ] Run `kuliss speaker` on a copy of an episode with no hand-placed intro, outro or
+- [ ] Run `kuliss finish` on a copy of an episode with no hand-placed intro, outro or
       swooshes; open it in Kdenlive. Check the first 10 s (intro video, music, the duck when
       the voices start), the last 40 s (outro music rising, card fading in and out), the
       swoosh volume against the voices, and the camera badge in motion.
@@ -40,7 +40,7 @@ Decided 2026-11-17:
 
 ## For Kenneth to judge
 
-- [ ] Watch a `kuliss speaker --preview 90` in Kdenlive: are words still missed, and does the
+- [ ] Watch a `kuliss finish --preview 90` in Kdenlive: are words still missed, and does the
       new look (shadows, voice-level glow and bars) work? If words are still missed, lower
       `speech_threshold` in the theme; the default was tuned on avsnitt215 only.
 - [ ] `session_28_2025-10-24/avsnitt224/avsnittXX28.kdenlive` is now found without a rename

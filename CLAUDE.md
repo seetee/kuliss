@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `kuliss` (AGPL-3.0-or-later) is a set of Kdenlive tools for the **Samkväm** let's play, run as one `kuliss` command.
 
-**API first:** `cli.py` is the only module that parses arguments, prints or sets exit codes (argparse subcommands; each imports its module lazily, so `notes`/`new` never load skia/PyAV/Silero). Everything else is a library: functions return data (`speaker.analyse` → `Analysis`, `notes.process_session` → `SessionResult`, `session.sync_session` → `SyncResult`, `scaffold.scaffold_session` → `Scaffolded`), warn through `logging`, and fail with `errors.die()` → `VoiceError`. Don't add `print`, `input` or `sys.exit` outside `cli.py`.
+**API first:** `cli.py` is the only module that parses arguments, prints or sets exit codes (argparse subcommands; each imports its module lazily, so `notes`/`new` never load skia/PyAV/Silero). Everything else is a library: functions return data (`finish.analyse` → `Analysis`, `notes.process_session` → `SessionResult`, `session.sync_session` → `SyncResult`, `scaffold.scaffold_session` → `Scaffolded`), warn through `logging`, and fail with `errors.die()` → `VoiceError`. Don't add `print`, `input` or `sys.exit` outside `cli.py`.
 
 It merges two former projects, `indicate-speaker` and `kdenlive-commentor`, and both histories are kept.
 
@@ -15,9 +15,9 @@ Klatch (`../klatch`, an automatic podcast pipeline) will reuse `vad.py`, `sync.p
 ## Commands
 
 ```bash
-uv run kuliss speaker P.kdenlive --dry-run      # analyse only; prints switches + screen/talk %
-uv run kuliss speaker P.kdenlive --preview 90   # first 90 s -> P-overlay-preview.mkv
-uv run kuliss speaker P.kdenlive                # render + patch the project
+uv run kuliss finish P.kdenlive --dry-run      # analyse only; prints switches + screen/talk %
+uv run kuliss finish P.kdenlive --preview 90   # first 90 s -> P-overlay-preview.mkv
+uv run kuliss finish P.kdenlive                # render + patch the project
 uv run kuliss notes [dir]                       # session dir, parent dir, or bare from anywhere inside a session tree
 uv run kuliss notes --dry-run                   # diff preview, no writes
 uv run kuliss notes --show avsnittXXX           # print one episode's section
@@ -28,9 +28,9 @@ uv run pytest                                   # single test: -k <name>; no med
 
 Test end to end only on a **copy** of a real project or session directory. The user's projects and Kdenlive backups live under `~/documents/samkvam.online/…` and `~/.local/share/kdenlive/.backup/`. CI (`.github/workflows/test.yml`) runs pytest on 3.12/3.14 from `uv.lock`, once more with `--resolution lowest-direct`, and `uv run ruff check` (rules in `pyproject.toml`: E, F, UP, B, SIM, I; line-length 100; E741 enforced, so no single-letter `l`).
 
-## `kuliss speaker`
+## `kuliss finish`
 
-`kuliss speaker` (`speaker.py`: `analyse` → `render_overlay` → `apply`; formerly the separate `indicate-speaker`) reads a Kdenlive project of a multi-player let's play and patches it **in place**, after a timestamped `.bak`. It adds one video track (on top) and one audio track (below all other audio tracks, mixer volume `SOUND_LEVEL` = −24 dB, the level of the crew's `Assets` track; set only when the track is created), both named `kuliss`:
+`kuliss finish` (`finish.py`: `analyse` → `render_overlay` → `apply`; called `kuliss speaker` until 2026-11-17, and before that the separate `indicate-speaker`) reads a Kdenlive project of a multi-player let's play and patches it **in place**, after a timestamped `.bak`. It adds one video track (on top) and one audio track (below all other audio tracks, mixer volume `SOUND_LEVEL` = −24 dB, the level of the crew's `Assets` track; set only when the track is created), both named `kuliss`:
 - The video track holds a transparent overlay: a backdrop with 1–8 player avatars, the viewed player enlarged with a name label (with a camera badge on its corner), and a talking marker on whoever speaks.
 - The audio track holds a transition sound at every switch between players' views.
 
@@ -38,7 +38,7 @@ The look comes from a per-game `theme.toml` (see `theme.example.toml`), found ne
 
 The project file is the single input. Cuts, clip-to-player mapping (by source file name; by default the files on the player's voice track, see `with_sources`) and each voice's audio stream (`audio_index` on the voice track's clips) all come from it. Don't reintroduce file-name/date/stream-title matching.
 
-The tracks are named `kuliss` (`TRACK_NAME`) and the bin clips `kuliss speaker …` (`CLIP_PREFIX`), and those names are how a re-run finds them. Tracks still named `kuliss speaker` (`OLD_TRACK_NAME`, used for a few hours on 2026-11-11) are found and renamed, but an old audio track is not moved to the bottom. The overlay is written next to the project as `<project>-overlay.mkv`. (The `indicate-speaker` names and `indicate-speaker/` folder from before 2026-11-11 were only ever used in tests; no project depends on them.)
+The tracks are named `kuliss` (`TRACK_NAME`) and the bin clips `kuliss speaker …` (`CLIP_PREFIX`; kept when the command became `finish`), and those names are how a re-run finds them. Tracks still named `kuliss finish` (`OLD_TRACK_NAME`, used for a few hours on 2026-11-11) are found and renamed, but an old audio track is not moved to the bottom. The overlay is written next to the project as `<project>-overlay.mkv`. (The `indicate-speaker` names and `indicate-speaker/` folder from before 2026-11-11 were only ever used in tests; no project depends on them.)
 
 - `config.py`: `Theme`/`Player` dataclasses and `load_theme`. Every value is type- and range-checked, and unknown keys warn (`THEME_KEYS`/`PLAYER_KEYS`: add new keys there). Every expected failure goes through `die()` → `VoiceError` (both in `errors.py`), printed once by `cli.main()` as `ERROR: …`. `timeline.load` also converts structural surprises (`KeyError` and similar) into `die()`.
 - `timeline.py`: stdlib ElementTree only, with targeted edits. Everything the tool doesn't own must round-trip untouched.
@@ -91,14 +91,14 @@ Pipeline:
 
 ## `kuliss sync`
 
-`session.py` places `sources/*.mkv` on the session project. Unlike `speaker`, it matches by file name and **stream title**, because that is the crew's recording standard (decided 2026-10-30): `<date>_<initial>.mkv`, initials from `notes.TALLY_NAMES`, audio titled `Full mix` (unused backup), `Game audio`, `Voice audio`, `Comms`. `TRACKS` maps them to track names: `<I> Comms`, `<Name> Voice`, `<I> Game`, video `<Name> Game`.
+`session.py` places `sources/*.mkv` on the session project. Unlike `finish`, it matches by file name and **stream title**, because that is the crew's recording standard (decided 2026-10-30): `<date>_<initial>.mkv`, initials from `notes.TALLY_NAMES`, audio titled `Full mix` (unused backup), `Game audio`, `Voice audio`, `Comms`. `TRACKS` maps them to track names: `<I> Comms`, `<Name> Voice`, `<I> Game`, video `<Name> Game`.
 - `sync.py` (Kdenlive-free): a 100 Hz log-loudness envelope of the first 30 min (via `vad.decode`), FFT cross-correlation. `offset` measures both directions (my voice in your Comms, yours in mine) and averages, cancelling the call delay; confidence (peak/std) below `MIN_CONFIDENCE` is dropped, and both weak is an error. Session 28's real matches scored 23–35.
 - Guests: a file suffix of more than one letter that isn't a crew name (`_jesper.mkv`) is a guest; `TRACKS` then uses their name for `{i}` too, and their tracks are created like the crew's. A crew member's full name (`_kenneth.mkv`) maps to the crew. Guests are not added to `TALLY_NAMES`, which also drives the tally lines.
-- `speaker` drops players with no voice clips (`timeline.present`), so whoever missed a session gets no avatar.
-- It refuses if any target track already has clips: never touch an edit in progress. The earliest recording starts at 0 (`kuliss speaker` places the intro over it).
+- `finish` drops players with no voice clips (`timeline.present`), so whoever missed a session gets no avatar.
+- It refuses if any target track already has clips: never touch an edit in progress. The earliest recording starts at 0 (`kuliss finish` places the intro over it).
 - It creates every missing player track, grouped by kind (all Comms, all Voice, all Game, then the video tracks under `Assets`), crew in `TALLY_NAMES` order, guests last, with the crew file's mixer on Voice and Game tracks.
 - `timeline.add_source` writes a bin chain plus one timeline chain for the video and one per audio stream, the layout Kdenlive itself uses; Kdenlive re-probes the rest. Verified by rendering a synced project through `AppRun --render`.
-- `timeline.write` is the shared backup + changed-on-disk check + atomic replace (also used by `speaker`).
+- `timeline.write` is the shared backup + changed-on-disk check + atomic replace (also used by `finish`).
 
 ## Verifying against real Kdenlive
 

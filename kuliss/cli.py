@@ -1,6 +1,6 @@
 """kuliss: Kdenlive tools for Samkväm.
 
-    kuliss speaker PROJECT.kdenlive [...]   who-we-watch / who-talks overlay
+    kuliss finish PROJECT.kdenlive [...]    overlay, switch sounds, intro and outro
     kuliss notes [DIR] [...]                sync Document Notes into the session .md
     kuliss new [DIR]                        scaffold the next session directory
     kuliss sync [SESSION_DIR]               put sources/*.mkv in sync on the project's tracks
@@ -38,9 +38,9 @@ def _progress(done: int, total: int) -> None:
     print(f"\r  rendering {100 * done // max(total, 1):3d}%", end=end, flush=True)
 
 
-def _speaker(a) -> int:
-    from . import speaker
-    an = speaker.analyse(a.project, a.theme)
+def _finish(a) -> int:
+    from . import finish
+    an = finish.analyse(a.project, a.theme)
     if an.absent:
         print("Not in this project (no voice clips): " + ", ".join(an.absent))
     fps = an.proj.fps
@@ -50,11 +50,11 @@ def _speaker(a) -> int:
         print(f"  {name:<12} on screen {on_screen:4.1f}%   talking {talking:4.1f}%")
     if a.dry_run:
         return 0
-    overlay = speaker.render_overlay(an, a.preview, _progress)
+    overlay = finish.render_overlay(an, a.preview, _progress)
     if a.preview is not None:
         print(f"Preview written: {overlay}")
         return 0
-    backup = speaker.apply(an, overlay)
+    backup = finish.apply(an, overlay)
     print(f"Updated {an.path.name} (backup: {backup.name}). {REOPEN}")
     return 0
 
@@ -155,14 +155,15 @@ def parser() -> argparse.ArgumentParser:
     ap.add_argument("--version", action="version", version=f"%(prog)s {version('kuliss')}")
     sub = ap.add_subparsers(dest="command", metavar="COMMAND", required=True)
 
-    p = sub.add_parser("speaker", help="who-we-watch / who-talks overlay",
-                       description="Add a who-we-watch / who-talks overlay to a Kdenlive project.")
+    p = sub.add_parser("finish", help="overlay, switch sounds, intro and outro",
+                       description="Finish an episode: add the who-we-watch / who-talks overlay, "
+                       "a sound at every switch, and the intro and outro.")
     p.add_argument("project", help="the .kdenlive project to update in place")
     p.add_argument("--theme", help="theme TOML (default: theme.toml next to or above the project)")
     p.add_argument("--dry-run", action="store_true", help="analyse and report; write nothing")
     p.add_argument("--preview", type=positive, metavar="SECS",
                    help="render only the first SECS to PROJECT-overlay-preview.mkv; project untouched")
-    p.set_defaults(run=_speaker)
+    p.set_defaults(run=_finish)
 
     p = sub.add_parser("notes", help="sync Document Notes into the session .md",
                        description="Sync Kdenlive episode notes into the session Markdown file.")

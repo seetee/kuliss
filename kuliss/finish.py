@@ -1,4 +1,5 @@
-"""kuliss speaker: add a who-we-watch / who-talks overlay to a Kdenlive project.
+"""kuliss finish: the who-we-watch / who-talks overlay, a sound at every switch, and
+the intro and outro, added to a Kdenlive episode project.
 
     a = analyse(project)            # reads the project, finds views and speech
     overlay = render_overlay(a)     # draws <project>-overlay.mkv

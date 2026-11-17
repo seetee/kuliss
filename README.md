@@ -9,7 +9,7 @@ Tools for the boring parts of producing a multi-player let's play from Kdenlive,
 
 | Command | What it does |
 |---|---|
-| `kuliss speaker` | Adds a who-we-watch / who-talks overlay to a Kdenlive project. |
+| `kuliss finish` | Finishes an episode: who-we-watch / who-talks overlay, switch sounds, intro and outro. |
 | `kuliss notes` | Syncs Kdenlive's Document Notes into the session Markdown file, with YouTube chapters. |
 | `kuliss new` | Scaffolds the next session directory, with its Kdenlive project. |
 | `kuliss sync` | Puts the session's recordings on the project's tracks, in sync. |
@@ -21,7 +21,7 @@ Needs [uv](https://docs.astral.sh/uv/) and Python 3.12 or newer (uv fetches it).
 ```bash
 uv tool install git+https://github.com/seetee/kuliss.git
 # or, from a clone:
-uv run kuliss speaker ~/episodes/avsnitt217/avsnitt217.kdenlive --dry-run
+uv run kuliss finish ~/episodes/avsnitt217/avsnitt217.kdenlive --dry-run
 ```
 
 ## Session workflow
@@ -44,13 +44,13 @@ uv run kuliss speaker ~/episodes/avsnitt217/avsnitt217.kdenlive --dry-run
 5. **Notes:** run `kuliss notes` anywhere in the session. It fills the session
    `.md` and prints what is still missing per episode.
 6. **Overlay:** with the game's `theme.toml` next to or above the episode, run
-   `kuliss speaker avsnitt<nr>/avsnitt<nr>.kdenlive --preview 90`, check
+   `kuliss finish avsnitt<nr>/avsnitt<nr>.kdenlive --preview 90`, check
    `avsnittNNN-overlay-preview.mkv` next to the project, then run it without `--preview`.
    Re-run it after any re-edit.
 7. **Publish:** render in Kdenlive and take the title, blurbs and `Kapitel`
    list for YouTube from the session `.md`.
 
-## `kuliss speaker`: speaker overlay
+## `kuliss finish`: overlay, sounds, intro and outro
 
 Run it on a finished (or half-finished) Kdenlive project of a multi-player let's play. It adds a small overlay that shows:
 
@@ -64,9 +64,9 @@ Everything is read from the project itself: your cuts, which clip is whose, and 
 
 | Command | What it does |
 |---|---|
-| `kuliss speaker P.kdenlive --dry-run` | Reports view switches, and screen and talk time per player. Writes nothing. |
-| `kuliss speaker P.kdenlive --preview 90` | Renders the first 90 s to `P-overlay-preview.mkv`, next to the project. The project is untouched. |
-| `kuliss speaker P.kdenlive` | Renders the overlay and **updates the project in place**. |
+| `kuliss finish P.kdenlive --dry-run` | Reports view switches, and screen and talk time per player. Writes nothing. |
+| `kuliss finish P.kdenlive --preview 90` | Renders the first 90 s to `P-overlay-preview.mkv`, next to the project. The project is untouched. |
+| `kuliss finish P.kdenlive` | Renders the overlay and **updates the project in place**. |
 | `--theme path/to/theme.toml` | Uses this theme instead of the `theme.toml` found next to or above the project. |
 
 **Close the project in Kdenlive before running**, or at least don't save it afterwards: reopen it instead. The tool refuses to write if the project changed on disk while it worked.
@@ -296,7 +296,7 @@ episode directory `avsnittXX<nr>` (the `XX` is a literal placeholder — rename
 it once the real episode number is known), a pre-filled skeleton `.md`, and
 the session's Kdenlive project `session_<nr>_<date>.kdenlive` (1080p60).
 The project starts empty, with only the `Assets` tracks: `kuliss sync` adds
-the players' tracks and `kuliss speaker` the intro and outro.
+the players' tracks and `kuliss finish` the intro and outro.
 
 The mixer settings of new tracks come from the crew file
 `_assets/kuliss.toml` next to the session folders (see `crew.example.toml`):
@@ -331,7 +331,7 @@ confidence and stops if a recording can't be matched. Once you're happy with
 the sync, delete the `Comms` tracks' clips unless you need them as a backup.
 
 **Someone missing?** Sync whoever recorded; the absent player gets no
-tracks. `kuliss speaker` leaves anyone without clips on their voice track out
+tracks. `kuliss finish` leaves anyone without clips on their voice track out
 of the overlay, so they get no avatar.
 
 **Guests** record to the same OBS standard and name the file after themselves:
@@ -342,7 +342,7 @@ their full name (`_kenneth.mkv`).
 
 `kuliss sync` refuses to touch a track that already has clips, so it can never
 disturb an edit in progress; clear the recordings' tracks to sync again. Like
-`kuliss speaker`, it saves a timestamped `.bak` first.
+`kuliss finish`, it saves a timestamped `.bak` first.
 
 Safety details:
 
@@ -364,7 +364,7 @@ The code is in `kuliss/`. `vad.py`, `sync.py` and `render.py` don't depend on Kd
 | File | Contents |
 |---|---|
 | `cli.py` | The `kuliss` command: the only place that parses arguments and prints |
-| `speaker.py` | `kuliss speaker`: `analyse()`, `render_overlay()`, `apply()` |
+| `finish.py` | `kuliss finish`: `analyse()`, `render_overlay()`, `apply()` |
 | `config.py` | Theme loading and validation |
 | `timeline.py` | Reading and patching the Kdenlive XML |
 | `vad.py` | Speech detection and voice level |
@@ -381,10 +381,10 @@ Every module but `cli.py` is a library: functions return their results and never
 they can be used from Python:
 
 ```python
-from kuliss import speaker
-a = speaker.analyse("avsnitt217/avsnitt217.kdenlive")
+from kuliss import finish
+a = finish.analyse("avsnitt217/avsnitt217.kdenlive")
 print(a.stats())                      # (name, % on screen, % talking) per player
-speaker.apply(a, speaker.render_overlay(a))
+finish.apply(a, finish.render_overlay(a))
 ```
 
 ## License

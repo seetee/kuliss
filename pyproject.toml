@@ -1,7 +1,7 @@
 [project]
 name = "kuliss"
 version = "3.0.0"
-description = "Kdenlive tools for Samkväm: speaker overlay, session notes, YouTube chapters"
+description = "Kdenlive tools for Samkväm: speaker overlay, intro and outro, session notes, YouTube chapters"
 readme = "README.md"
 license = "AGPL-3.0-or-later"
 license-files = ["LICENSE"]

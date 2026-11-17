@@ -55,7 +55,7 @@ class SyncResult:
 
 def create_project(dest: Path, crew: Crew) -> None:
     """A new, empty session project: the Assets tracks, which the intro and outro go
-    on (`kuliss speaker`), and the crew's master volume. `kuliss sync` adds the rest."""
+    on (`kuliss finish`), and the crew's master volume. `kuliss sync` adds the rest."""
     proj = timeline.new_project(dest)
     timeline._ensure_track(proj, True, timeline.ASSETS, "assets_audio", mixer=Mixer(crew.assets_gain))
     timeline._ensure_track(proj, False, timeline.ASSETS, "assets_video")
