@@ -1,19 +1,26 @@
 # Plan
 
-What is left after the full code edit of 2026-11-11 (API-first module split, notes episode
+What is left after the full code edit of 2026-11-11 and the template removal of 2026-11-17 (API-first module split, notes episode
 rule, detector tuning, overlay polish, lockfile and CI hardening).
 
-## Next up (state at close, 2026-11-11 evening)
+## Next up (state at close, 2026-11-17 evening)
 
-Added late on 2026-11-11 (commit `d9a8019`, CI green): tracks named `kuliss`, audio track
-at the bottom at -24 dB, camera badge on the name pill, intro and outro placed from the theme
-(`intro_audio`, `intro_video`, `outro_audio`, `outro_image`), intro music ducked where the
-first voice clip starts. None of it has been opened in the Kdenlive GUI or listened to.
+Done on 2026-11-17 (commits `aba99a3`, `6545dc4`, CI green): no session template any more
+(`kuliss new` builds the project, `kuliss sync` creates the players' tracks with the crew
+file's mixer and starts at 0); the real crew file is in `_assets/kuliss.toml`; one shared PO3
+`theme.toml` in the samkvam folder (with the intro/outro lines); `kuliss new` warns without a
+theme; `kuliss speaker` renamed `kuliss finish` (bin clip names kept). Still nothing of the
+intro/outro or the generated projects has been opened in the Kdenlive GUI.
+
+The evening routine: `kuliss new`, move the .mkv files to `sources/`, `kuliss sync`; rename
+`avsnittXX<nr>` to `avsnitt<nr>`, copy the project there as `avsnitt<nr>.kdenlive`, cut it
+to the episode starting at 0, edit; `kuliss notes`; `kuliss finish` (re-run after any change
+to the edit's length).
 
 For Kenneth, in this order:
 
-- [x] The four intro/outro lines are in the shared PO3 `theme.toml` in the samkvam folder
-      (2026-11-17). Sessions 27 and 28 still have their own copy without them, which wins there.
+- [ ] Sessions 27 and 28 have their own `theme.toml` without the intro/outro lines, which
+      wins over the shared one there; delete them to use the shared theme.
 - [ ] Run `kuliss finish` on a copy of an episode with no hand-placed intro, outro or
       swooshes; open it in Kdenlive. Check the first 10 s (intro video, music, the duck when
       the voices start), the last 40 s (outro music rising, card fading in and out), the
@@ -30,8 +37,8 @@ Decided 2026-11-17:
 - No session template: `kuliss new` builds the project itself (1080p60, only the `Assets`
   tracks); `kuliss sync` creates the players' tracks with the mixer from the crew file
   `_assets/kuliss.toml` and starts the recordings at 0. Still to do by Kenneth:
-  - [ ] Put a `kuliss.toml` in `_assets` with the old template's mixer values (see
-        `crew.example.toml`). The old template can then be deleted.
+  - [x] `_assets/kuliss.toml` holds the old template's mixer values. The old template
+        (`_assets/samkvam-session_template.kdenlive`) can be deleted.
   - [ ] Open a fresh `kuliss new` + `kuliss sync` project in the Kdenlive GUI: track order,
         mixer values (voice gain, pan, Audio contrast), and that Kdenlive saves it without
         complaint. Verified so far only through `AppRun --render`.
