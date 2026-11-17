@@ -17,7 +17,7 @@ import av
 import numpy as np
 
 from . import render, timeline, vad
-from .config import BOOKENDS, Player, Theme, load_theme
+from .config import BOOKENDS, Player, Theme, load_theme, nearest_theme
 from .errors import die
 
 MIN_SPAN = 1.0   # s; views shorter than this (flash cuts) don't count as a switch
@@ -45,10 +45,8 @@ class Analysis:
 
 
 def find_theme(project: Path) -> Path:
-    for d in project.parents:
-        if (d / "theme.toml").is_file():
-            return d / "theme.toml"
-    die(f"no theme.toml next to {project.name} or in any folder above it; "
+    return nearest_theme(project.parent) or die(
+        f"no theme.toml next to {project.name} or in any folder above it; "
         "pass one with --theme (see README)")
 
 

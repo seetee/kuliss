@@ -10,7 +10,6 @@ import math
 import os
 import re
 import time
-import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -18,6 +17,7 @@ from pathlib import Path
 import av
 
 from . import sync, timeline
+from .config import CREW_FILE, Crew, Mixer, load_crew
 from .errors import die
 from .notes import TALLY_NAMES
 
@@ -53,27 +53,16 @@ class SyncResult:
     seconds: float = 0.0                        # analysis time
 
 
-def create_project(template: Path, dest: Path) -> None:
-    """A new session project from the template, with the template's relative asset
-    paths made absolute so the project can live in the session folder."""
-    try:
-        tree = ET.parse(template)
-    except (OSError, ET.ParseError) as e:
-        die(f"cannot read the template {template}: {e}")
-    root = tree.getroot()
-    base = Path(root.get("root") or template.parent)
-    for e in root:
-        if e.tag in ("chain", "producer"):
-            res = timeline.props(e).get("resource", "")
-            if res and not Path(res).is_absolute() and (base / res).exists():
-                timeline.set_prop(e, "resource", base / res)
-    root.set("root", str(dest.parent))
-    for e in root.iter("property"):   # Kdenlive keys its cache and proxies on this
-        if e.get("name") == "kdenlive:docproperties.documentid":
-            e.text = str(int(time.time() * 1000))
+def create_project(dest: Path, crew: Crew) -> None:
+    """A new, empty session project: the Assets tracks, which the intro and outro go
+    on (`kuliss speaker`), and the crew's master volume. `kuliss sync` adds the rest."""
+    proj = timeline.new_project(dest)
+    timeline._ensure_track(proj, True, timeline.ASSETS, "assets_audio", mixer=Mixer(crew.assets_gain))
+    timeline._ensure_track(proj, False, timeline.ASSETS, "assets_video")
+    timeline.master(proj, Mixer(crew.master_gain))
     tmp = dest.with_name(dest.name + ".partial")
     try:
-        tree.write(tmp, encoding="utf-8", xml_declaration=True)
+        timeline.save(proj, tmp)
         os.replace(tmp, dest)
     except BaseException:
         tmp.unlink(missing_ok=True)
@@ -140,20 +129,28 @@ def sync_session(session_dir: Path) -> SyncResult:
         offsets[r.name] = found[r.name][0]
     seconds = time.monotonic() - t0
 
-    # recordings start where the intro music ends (the template's Assets audio track)
-    intro = tracks.get(("Assets", True))
-    at = intro.entries[0].start + intro.entries[0].length if intro and intro.entries else 0
+    # tracks first, grouped like the former template: all Comms, all Voice, all Game
+    crew = load_crew(session_dir.parent / CREW_FILE)
+    order = [i for i, _ in TALLY_NAMES]
+    for fmt, is_audio, title in TRACKS:
+        for r in sorted(recs, key=lambda r: order.index(r.initial) if r.initial in order else 99):
+            name = fmt.format(i=r.initial, name=r.name)
+            if (name, is_audio) in tracks:
+                continue
+            mixer = {"Voice audio": crew.voice_of(r.name),
+                     "Game audio": Mixer(crew.game_gain)}.get(title)
+            slug = re.sub(r"\W+", "_", name.lower()) + ("_a" if is_audio else "_v")
+            timeline._ensure_track(proj, is_audio, name, f"kuliss_{slug}", under="Assets",
+                                   mixer=mixer)
+            tracks[name, is_audio] = None
+            added.append((name, is_audio))
+
     first = min(offsets.values())
     for r in recs:
         kid, video, audio = timeline.add_source(proj, r.path, r.length,
                                                 [r.streams[t] for t in TITLES])
-        start = at + round((offsets[r.name] - first) * proj.fps)
+        start = round((offsets[r.name] - first) * proj.fps)
         for fmt, is_audio, title in TRACKS:
-            name = fmt.format(i=r.initial, name=r.name)
-            if (name, is_audio) not in tracks:   # a guest, usually
-                slug = re.sub(r"\W+", "_", name.lower()) + ("_a" if is_audio else "_v")
-                timeline._ensure_track(proj, is_audio, name, f"kuliss_{slug}", under="Assets")
-                added.append((name, is_audio))
-            timeline.place(proj, name, is_audio,
+            timeline.place(proj, fmt.format(i=r.initial, name=r.name), is_audio,
                            audio[r.streams[title]] if is_audio else video, kid, start, r.length)
     return SyncResult(path, timeline.write(proj, path, mtime), ref.name, found, added, seconds)

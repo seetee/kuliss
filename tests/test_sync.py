@@ -9,7 +9,7 @@ import pytest
 
 from kuliss import session, sync
 from kuliss import timeline as T
-from kuliss.config import VoiceError
+from kuliss.config import CREW_FILE, VoiceError, load_crew
 
 RNG = np.random.default_rng(67)
 
@@ -39,42 +39,15 @@ def test_unrelated_audio_is_refused():
         sync.offset(*(z(bursts(300)) for _ in range(4)), "Stranger")
 
 
-# --- end to end on a tiny template and tiny recordings -----------------------
+# --- end to end on a generated project and tiny recordings -------------------
 
-def track(tid, name, audio, body=""):
-    at = '<property name="kdenlive:audio_track">1</property>' if audio else ""
-    hide = "video" if audio else "audio"
-    return (f'<playlist id="{tid}_a">{at}{body}</playlist><playlist id="{tid}_b">{at}</playlist>'
-            f'<tractor id="{tid}" in="0">{at}<property name="kdenlive:track_name">{name}</property>'
-            f'<track hide="{hide}" producer="{tid}_a"/><track hide="{hide}" producer="{tid}_b"/>'
-            '</tractor>')
-
-
-NAMES = [("A", "Assets", True), ("A1", "J Comms", True), ("A2", "K Comms", True),
-         ("A3", "Joel Voice", True), ("A4", "Kenneth Voice", True), ("A5", "J Game", True),
-         ("A6", "K Game", True), ("V1", "Joel Game", False), ("V2", "Kenneth Game", False),
-         ("VA", "Assets", False)]
-TEMPLATE = f"""<?xml version='1.0' encoding='utf-8'?>
-<mlt LC_NUMERIC="C" producer="main_bin" root="ROOT" version="7.41.0">
- <profile frame_rate_num="10" frame_rate_den="1" width="1920" height="1080"/>
- <producer id="black"><property name="resource">black</property></producer>
- <chain id="intro" out="49"><property name="resource">media/intro.mp3</property>
-  <property name="kdenlive:id">2</property></chain>
- {"".join(track(t, n, a, '<entry producer="intro" in="0" out="49"/>' if t == "A" else "")
-          for t, n, a in NAMES)}
- <tractor id="seq" in="0" out="49">
-  <property name="kdenlive:uuid">{{u}}</property>
-  <property name="kdenlive:sequenceproperties.tracksCount">{len(NAMES)}</property>
-  <track producer="black"/>{"".join(f'<track producer="{t}"/>' for t, _, _ in NAMES)}
- </tractor>
- <playlist id="main_bin">
-  <property name="kdenlive:docproperties.version">1.1</property>
-  <property name="kdenlive:docproperties.activetimeline">{{u}}</property>
-  <property name="kdenlive:docproperties.documentid">1</property>
-  <entry producer="intro"/><entry producer="seq"/>
- </playlist>
- <tractor id="project" in="0" out="49"><track producer="seq"/></tractor>
-</mlt>
+CREW = """master_gain = 10.0
+assets_gain = -21.0
+game_gain = -20.5
+[voice.Joel]
+gain = 9.5
+pan = 0.56
+contrast = 33
 """
 
 
@@ -107,15 +80,12 @@ def recording(path, voice, comms, seconds):
 
 
 def make_session(tmp_path):
-    assets = tmp_path / "_assets"
-    (assets / "media").mkdir(parents=True)
-    (assets / "media" / "intro.mp3").write_bytes(b"")
-    template = assets / "template.kdenlive"
-    template.write_text(TEMPLATE.replace("ROOT", str(assets)))
+    (tmp_path / "_assets").mkdir()
+    (tmp_path / "_assets" / "kuliss.toml").write_text(CREW)
     sdir = tmp_path / "session_1_2026-10-30"
     (sdir / "sources").mkdir(parents=True)
     project = sdir / f"{sdir.name}.kdenlive"
-    session.create_project(template, project)
+    session.create_project(project, load_crew(tmp_path / CREW_FILE))
 
     j, k = bursts(120), bursts(120)           # Kenneth starts recording 12 s after Joel
     recording(sdir / "sources" / "2026-10-30_j.mkv", j[:9000], k[:9000], 90)
@@ -123,13 +93,22 @@ def make_session(tmp_path):
     return sdir, project
 
 
-def test_create_project_makes_paths_absolute(tmp_path):
+def mixer(proj, name, audio=True):
+    """{service: properties} of a track's filters."""
+    t = T._find_track(proj, name, audio)
+    return {T.props(f)["mlt_service"]: T.props(f) for f in t.findall("filter")}
+
+
+def test_create_project_builds_an_empty_session(tmp_path):
     sdir, project = make_session(tmp_path)
-    root = T.ET.parse(project).getroot()
-    assert root.get("root") == str(sdir)
-    res = {T.props(e).get("resource") for e in root if e.tag in ("chain", "producer")}
-    assert res == {"black", str(tmp_path / "_assets" / "media" / "intro.mp3")}
-    assert T.props(root.find("playlist[@id='main_bin']"))["kdenlive:docproperties.documentid"] != "1"
+    p = T.load(project)
+    assert p.root.get("root") == str(sdir) and (p.fps, p.width, p.height) == (60, 1920, 1080)
+    assert [(t.name, t.audio) for t in p.tracks] == [("Assets", True), ("Assets", False)]
+    assert mixer(p, "Assets")["volume"]["level"] == "-21.0"
+    master = {T.props(f)["mlt_service"]: T.props(f) for f in p.seq.findall("filter")}
+    assert master["volume"]["level"] == "10.0"
+    bin_props = T.props(p.root.find("playlist[@id='main_bin']"))
+    assert bin_props["kdenlive:docproperties.activetimeline"] == T.props(p.seq)["kdenlive:uuid"]
 
 
 def test_sync_places_recordings_and_refuses_a_second_run(tmp_path):
@@ -137,15 +116,26 @@ def test_sync_places_recordings_and_refuses_a_second_run(tmp_path):
     result = session.sync_session(sdir)
     p = T.load(project)
     tracks = {t.name: t for t in p.tracks}
-    joel, kenneth = 50, 50 + 120               # after the 5 s intro; Kenneth 12 s later
+    joel, kenneth = 0, 12 * 60                 # from 0 (60 fps); Kenneth 12 s later
     for name, start, stream in [("J Comms", joel, 4), ("Joel Voice", joel, 3),
                                 ("J Game", joel, 2), ("K Comms", kenneth, 4),
                                 ("Kenneth Voice", kenneth, 3), ("K Game", kenneth, 2)]:
         (e,) = tracks[name].entries
-        assert (e.start, e.length, e.audio_index) == (start, 900, stream), name
+        assert (e.start, e.length, e.audio_index) == (start, 90 * 60, stream), name
         assert Path(e.resource).name.endswith(f"_{name[0].lower()}.mkv")
-    assert tracks["Kenneth Game"].entries[0].start == kenneth and p.length == kenneth + 900
+    assert tracks["Kenneth Game"].entries[0].start == kenneth and p.length == kenneth + 90 * 60
     assert round(result.offsets["Kenneth"][0], 2) == 12.0
+    # tracks grouped by kind, in crew order; mixers from the crew file
+    assert [(t.name, t.audio) for t in p.tracks] == [
+        ("Assets", True), ("J Comms", True), ("K Comms", True), ("Joel Voice", True),
+        ("Kenneth Voice", True), ("J Game", True), ("K Game", True),
+        ("Joel Game", False), ("Kenneth Game", False), ("Assets", False)]
+    joel_voice = mixer(p, "Joel Voice")
+    assert (joel_voice["volume"]["level"], joel_voice["panner"]["start"],
+            joel_voice["avfilter.acontrast"]["av.contrast"]) == ("9.5", "0.56", "33")
+    assert mixer(p, "Kenneth Voice")["volume"]["level"] == "0.0"   # not in the crew file
+    assert mixer(p, "K Game")["volume"]["level"] == "-20.5"
+    assert mixer(p, "J Comms") == {}
 
     with pytest.raises(VoiceError, match="already has clips"):
         session.sync_session(sdir)
@@ -180,8 +170,17 @@ def test_guest_gets_own_tracks_and_crew_may_use_full_names(tmp_path):
     tracks = {(t.name, t.audio): t for t in p.tracks}
     for name, audio in [("Jesper Comms", True), ("Jesper Voice", True), ("Jesper Game", True),
                         ("Jesper Game", False)]:
-        assert tracks[name, audio].entries[0].start == 50 + 50, name
-    assert tracks["Kenneth Voice", True].entries[0].start == 50 + 120
+        assert tracks[name, audio].entries[0].start == 5 * 60, name
+    assert tracks["Kenneth Voice", True].entries[0].start == 12 * 60
     order = [t.name for t in p.tracks if not t.audio]
     assert order.index("Jesper Game") == order.index("Assets") - 1   # under intro and namecards
     assert ("Jesper Game", False) in result.added_tracks
+
+
+def test_crew_file_is_checked(tmp_path):
+    crew = tmp_path / "kuliss.toml"
+    crew.write_text('[voice.Joel]\npan = 1.5\n')
+    with pytest.raises(VoiceError, match="pan must be between 0"):
+        load_crew(crew)
+    crew.write_text('game_gain = -21\n')   # a whole number is fine
+    assert load_crew(crew).game_gain == -21.0 and load_crew(crew).voice_of("Anna").gain == 0

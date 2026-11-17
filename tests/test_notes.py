@@ -591,6 +591,20 @@ class ScaffoldTests(unittest.TestCase):
             self.assertIn('  * Faithful 32x', md)
             self.assertIn('### avsnittXX27', md)
             self.assertIn('**Titel:**', md)
+            from kuliss import timeline  # the project is built without a template
+            proj = timeline.load(new_dir / f'{new_dir.name}.kdenlive')
+            self.assertEqual([(tr.name, tr.audio) for tr in proj.tracks],
+                             [('Assets', True), ('Assets', False)])
+
+    def test_warns_without_a_theme_above_the_session(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            SessionTree(tmp).episode('avsnitt207', NOTEWORTHY)
+            with self.assertLogs('kuliss.scaffold', 'WARNING') as logs:
+                self._scaffold(Path(tmp))
+            self.assertIn('no theme.toml', logs.output[0])
+            (Path(tmp) / 'theme.toml').write_text('')   # one shared theme for all sessions
+            with self.assertNoLogs('kuliss.scaffold', 'WARNING'):
+                self._scaffold(Path(tmp))
 
     def test_prompted_date_and_software_used(self):
         with tempfile.TemporaryDirectory() as tmp:

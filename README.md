@@ -84,12 +84,12 @@ Running it again after you re-edit reuses the same tracks and clips and regenera
 
 ### The theme
 
-Copy [`theme.example.toml`](theme.example.toml) to `theme.toml` next to the project, or into a folder above it such as the season folder; the nearest one wins. Keep one theme per game.
+Copy [`theme.example.toml`](theme.example.toml) to `theme.toml` next to the project, or into a folder above it; the nearest one wins. Keep one theme per game: for the game you play most, put it in the folder holding the `session_*` folders so every session uses it, and give a session with another game its own `theme.toml`. `kuliss new` warns when the new session has no theme above it.
 
 - `position` picks a corner (`top-left`, `top-right`, `bottom-left`, `bottom-right`) or an edge centre (`top`, `bottom`, `left`, `right`). `margin` is the distance from the edges the bar sits against, and `offset = [x, y]` nudges it from there in pixels (positive = right/down). For example, `position = "left"` with `offset = [0, -100]` centres the bar on the left edge, 100 px above the middle.
 - `orientation = "horizontal"` (the default) draws a row, `"vertical"` a column along the frame edge. The name label sits under the viewed avatar either way; the column spaces the avatars out to leave room for it.
 
-- `voice_track` is the name of the Kdenlive **audio track** holding that player's voice; it defaults to the player's name, and a track named `<name> Voice` (as in the session template) is found too. The tool uses the audio stream and the cuts you chose on that track.
+- `voice_track` is the name of the Kdenlive **audio track** holding that player's voice; it defaults to the player's name, and a track named `<name> Voice` (as `kuliss sync` names them) is found too. The tool uses the audio stream and the cuts you chose on that track.
 - Video clips from the same file as that voice track count as the player's view, whichever video track they sit on. Set `source` only when someone's view is recorded in a different file. It takes a file-name pattern such as `"*_h.mkv"`, or a list of them.
 - Unknown keys get a warning (usually a typo), and wrong values stop the run with a message saying what is expected.
 
@@ -294,16 +294,24 @@ plus free extra lines). It then creates `session_<nr>_<date>/` containing
 `sources/`, `kortisar/` (for YouTube shorts and TikToks), a placeholder
 episode directory `avsnittXX<nr>` (the `XX` is a literal placeholder — rename
 it once the real episode number is known), a pre-filled skeleton `.md`, and
-the session's Kdenlive project `session_<nr>_<date>.kdenlive`, made from
-`_assets/samkvam-session_template.kdenlive` (intro, namecards, outro and the
-named tracks).
+the session's Kdenlive project `session_<nr>_<date>.kdenlive` (1080p60).
+The project starts empty, with only the `Assets` tracks: `kuliss sync` adds
+the players' tracks and `kuliss speaker` the intro and outro.
+
+The mixer settings of new tracks come from the crew file
+`_assets/kuliss.toml` next to the session folders (see `crew.example.toml`):
+each player's voice volume, pan and voice contrast, the game audio and
+`Assets` volumes, and the master volume. They are set when a track is created;
+change them in Kdenlive afterwards as you like. Without a crew file every
+track starts at 0 dB, centred.
 
 ## `kuliss sync`: recordings in sync
 
 Copy everyone's recordings into the session's `sources/`, close the project in
 Kdenlive, and run `kuliss sync` inside the session. It puts each recording on
 the project's tracks, lined up so everyone's audio and video is in sync, with
-the earliest recording starting where the intro music ends.
+the earliest recording starting at 0. It creates each player's tracks the
+first time, with the mixer settings from the crew file.
 
 The recordings must follow the crew's OBS standard:
 
@@ -322,14 +330,13 @@ directions, which cancels the call's delay. On session 28 it landed within
 confidence and stops if a recording can't be matched. Once you're happy with
 the sync, delete the `Comms` tracks' clips unless you need them as a backup.
 
-**Someone missing?** Sync whoever recorded; the absent player's tracks stay
-empty. `kuliss speaker` leaves anyone without clips on their voice track out
-of the overlay, so they get no avatar. Remove their namecard by hand.
+**Someone missing?** Sync whoever recorded; the absent player gets no
+tracks. `kuliss speaker` leaves anyone without clips on their voice track out
+of the overlay, so they get no avatar.
 
 **Guests** record to the same OBS standard and name the file after themselves:
-`<date>_jesper.mkv`. Their tracks don't exist in the template, so `kuliss sync`
-adds `Jesper Comms`, `Jesper Voice`, `Jesper Game` (audio) and a `Jesper Game`
-video track, which goes under the intro and namecards. For the overlay, add the
+`<date>_jesper.mkv`. `kuliss sync` gives them `Jesper Comms`, `Jesper Voice`,
+`Jesper Game` (audio) and a `Jesper Game` video track, after the crew's. For the overlay, add the
 guest as a `[[player]]` in that game's `theme.toml`. A crew member may also use
 their full name (`_kenneth.mkv`).
 

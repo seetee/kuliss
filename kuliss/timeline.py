@@ -19,7 +19,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .config import Player
+from .config import Mixer, Player
 from .errors import die
 
 TRACK_NAME = "kuliss"
@@ -384,11 +384,27 @@ def _find_track(project: Project, name: str, audio: bool) -> ET.Element | None:
     return None
 
 
+def _mix(tractor: ET.Element, base: str, m: Mixer) -> None:
+    """A track's (or the master's) mixer, as Kdenlive writes it."""
+    filters = [("contrast", {"mlt_service": "avfilter.acontrast", "kdenlive_id": "avfilter.acontrast",
+                             "av.contrast": m.contrast})] if m.contrast else []
+    filters += [("volume", {"window": 75, "max_gain": "20dB", "level": m.gain, "channel_mask": -1,
+                            "mlt_service": "volume", "internal_added": 237, "disable": 0}),
+                ("panner", {"channel": -1, "mlt_service": "panner", "internal_added": 237,
+                            "start": m.pan, "disable": int(m.pan == 0.5)})]
+    for key, fields in filters:
+        f = ET.SubElement(tractor, "filter", id=f"{base}_{key}")
+        for k, v in fields.items():
+            set_prop(f, k, v)
+
+
 def _ensure_track(project: Project, audio: bool, name: str = TRACK_NAME,
-                  base: str | None = None, under: str | None = None) -> ET.Element:
+                  base: str | None = None, under: str | None = None,
+                  mixer: Mixer | None = None) -> ET.Element:
     """The named track's first playlist, emptied; the track is created if missing.
     Our audio tracks go below all others; any other new audio track on top of the
-    audio tracks; a new video track on top, or right under the video track named `under`."""
+    audio tracks; a new video track on top, or right under the video track named `under`.
+    A new audio track gets `mixer` (ours: SOUND_LEVEL)."""
     seq, byid = project.seq, project.byid()
     refs = seq.findall("track")
     t = _find_track(project, name, audio)
@@ -416,11 +432,10 @@ def _ensure_track(project: Project, audio: bool, name: str = TRACK_NAME,
         ET.SubElement(tractor, "track", producer=pl.get("id"),
                       hide="video" if audio else "audio")
         pls.append(pl)
-    if audio and name in (TRACK_NAME, ASSETS_OURS):   # the track's mixer level; the editor's later changes stay
-        f = ET.SubElement(tractor, "filter", id=f"{base}_volume")
-        for key, v in {"window": 75, "max_gain": "20dB", "level": SOUND_LEVEL, "channel_mask": -1,
-                       "mlt_service": "volume", "internal_added": 237, "disable": 0}.items():
-            set_prop(f, key, v)
+    if audio and name in (TRACK_NAME, ASSETS_OURS):
+        mixer = Mixer(SOUND_LEVEL)
+    if audio and mixer:   # set only now: the editor's later changes stay
+        _mix(tractor, base, mixer)
     at = list(project.root).index(seq)
     for n, el in enumerate([*pls, tractor]):
         project.root.insert(at + n, el)
@@ -601,8 +616,74 @@ def write(project: Project, path: Path, mtime: int) -> Path:
 
 
 # --------------------------------------------------------------------------
-# Recordings (kuliss sync)
+# Session projects and recordings (kuliss new, kuliss sync)
 # --------------------------------------------------------------------------
+
+# An empty project with one sequence, as Kdenlive 26.08 saves one (cut down from the
+# crew's former template); Kdenlive fills in the rest on first save.
+PROFILE = ('description="HD 1080p 60 fps" width="1920" height="1080" progressive="1" '
+           'sample_aspect_num="1" sample_aspect_den="1" display_aspect_num="16" '
+           'display_aspect_den="9" frame_rate_num="60" frame_rate_den="1" colorspace="709"')
+SKELETON = """<?xml version='1.0' encoding='utf-8'?>
+<mlt LC_NUMERIC="C" producer="main_bin" version="7.41.0">
+ <profile {profile}/>
+ <producer id="black_track" in="0" out="0">
+  <property name="length">2147483647</property>
+  <property name="eof">continue</property>
+  <property name="resource">black</property>
+  <property name="aspect_ratio">1</property>
+  <property name="mlt_service">color</property>
+  <property name="kdenlive:playlistid">black_track</property>
+  <property name="mlt_image_format">rgba</property>
+  <property name="set.test_audio">0</property>
+ </producer>
+ <tractor id="sequence" in="0" out="0">
+  <property name="kdenlive:clipname">Sequence 1</property>
+  <property name="kdenlive:uuid">{uuid}</property>
+  <property name="kdenlive:producer_type">17</property>
+  <property name="kdenlive:control_uuid">{uuid}</property>
+  <property name="kdenlive:id">1</property>
+  <property name="kdenlive:clip_type">0</property>
+  <property name="kdenlive:folderid">2</property>
+  <property name="kdenlive:sequenceproperties.documentuuid">{uuid}</property>
+  <property name="kdenlive:sequenceproperties.hasAudio">1</property>
+  <property name="kdenlive:sequenceproperties.hasVideo">1</property>
+  <property name="kdenlive:sequenceproperties.tracksCount">0</property>
+  <track producer="black_track"/>
+ </tractor>
+ <playlist id="main_bin">
+  <property name="kdenlive:folder.-1.2">Sequences</property>
+  <property name="kdenlive:sequenceFolder">2</property>
+  <property name="kdenlive:docproperties.activetimeline">{uuid}</property>
+  <property name="kdenlive:docproperties.opensequences">{uuid}</property>
+  <property name="kdenlive:docproperties.uuid">{uuid}</property>
+  <property name="kdenlive:docproperties.audioChannels">2</property>
+  <property name="kdenlive:docproperties.documentid">{docid}</property>
+  <property name="kdenlive:docproperties.profile">atsc_1080p_60</property>
+  <property name="kdenlive:docproperties.version">1.1</property>
+  <property name="xml_retain">1</property>
+  <entry producer="sequence" in="0" out="0"/>
+ </playlist>
+ <tractor id="project" in="0" out="0">
+  <property name="kdenlive:projectTractor">1</property>
+  <track producer="sequence" in="0" out="0"/>
+ </tractor>
+</mlt>
+"""
+
+
+def new_project(path: Path) -> Project:
+    """An empty 1080p60 project, to be written to `path`; no tracks yet."""
+    tree = ET.ElementTree(ET.fromstring(SKELETON.format(
+        profile=PROFILE, uuid=f"{{{uuid.uuid4()}}}", docid=int(time.time() * 1000))))
+    tree.getroot().set("root", str(path.parent))
+    return _read(path, tree)
+
+
+def master(project: Project, m: Mixer) -> None:
+    """The sequence's master volume."""
+    _mix(project.seq, "sequence_master", m)
+
 
 def add_source(project: Project, path: Path, length: int,
                streams: list[int]) -> tuple[str, str, dict[int, str]]:

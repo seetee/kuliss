@@ -1,9 +1,11 @@
 """kuliss new: scaffold the next session directory. Stdlib only at import time."""
 
+import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from .config import CREW_FILE, load_crew, nearest_theme
 from .errors import VoiceError, die
 from .mdoc import _parse, _render
 from .notes import (
@@ -16,7 +18,7 @@ from .notes import (
     _write_atomic,
 )
 
-TEMPLATE = Path('_assets') / 'samkvam-session_template.kdenlive'
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -42,7 +44,7 @@ def scaffold_session(root: Path, number: int, session_date: str,
                      software_lines: list[str]) -> Scaffolded:
     """Create session_<number>_<date>/ with sources/, kortisar/ (shorts/TikToks), an
     avsnittXX<number> placeholder episode (episode numbers aren't known yet), the
-    skeleton .md and, from <root>/_assets' template, the session's Kdenlive project."""
+    skeleton .md and the session's Kdenlive project (mixer levels: <root>/_assets/kuliss.toml)."""
     name = f'session_{number}_{session_date}'
     session_dir = root / name
     if session_dir.exists():
@@ -60,13 +62,14 @@ def scaffold_session(root: Path, number: int, session_date: str,
     _ensure_section(block, 'Noteworthy')
     _write_atomic(session_dir / f'{name}.md', _render(doc))
 
-    template, project, warning = root / TEMPLATE, session_dir / f'{name}.kdenlive', None
-    if template.is_file():
-        from .session import create_project  # imported here: `kuliss new` stays light
-        try:
-            create_project(template, project)
-        except VoiceError as e:
-            project, warning = None, f'no Kdenlive project created: {e}'
-    else:
-        project, warning = None, f'no {template}, so no Kdenlive project created'
+    if nearest_theme(session_dir) is None:
+        log.warning('no theme.toml in %s or above, so kuliss speaker will not run; put the '
+                    "game's theme in %s (see theme.example.toml)", session_dir, root)
+
+    project, warning = session_dir / f'{name}.kdenlive', None
+    from .session import create_project  # imported here: `kuliss new` stays light
+    try:
+        create_project(project, load_crew(root / CREW_FILE))
+    except VoiceError as e:
+        project, warning = None, f'no Kdenlive project created: {e}'
     return Scaffolded(session_dir, episode, project, warning)

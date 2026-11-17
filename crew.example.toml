@@ -1,0 +1,17 @@
+# kuliss.toml: the crew file, one for all sessions. Put it in _assets/ next to the
+# session_* folders. kuliss new and kuliss sync set these on the tracks they create;
+# change them in Kdenlive afterwards as you like. Everything is optional: 0 dB, centred.
+
+master_gain = 10.0    # dB, the sequence's master volume
+assets_gain = -21.0   # dB, the Assets audio track (intro and outro music)
+game_gain   = -21.5   # dB, every player's "<I> Game" track
+
+# one section per player, named as in their "<Name> Voice" track
+[voice.Alice]
+gain = 9.5            # dB, -60 to 20
+pan = 0.56            # 0 left, 0.5 centre, 1 right
+contrast = 33         # Kdenlive's "Audio contrast" effect, 0-100; 0 or omitted = none
+
+[voice.Bob]
+gain = -4.0
+pan = 0.44

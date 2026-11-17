@@ -1,8 +1,9 @@
-"""The theme: one TOML per game, holding the look, the sound and the players."""
+"""The theme: one TOML per game, holding the look, the sound and the players.
+The crew file: one TOML for all sessions, holding the mixer settings of the tracks."""
 
 import logging
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from .errors import VoiceError, die  # noqa: F401  (VoiceError: re-exported)
@@ -45,6 +46,25 @@ class Theme:
     outro_image: Path | None = None
 
 
+@dataclass(frozen=True)
+class Mixer:
+    """A Kdenlive track's mixer: what a new track gets; later changes in Kdenlive stay."""
+    gain: float = 0.0   # dB
+    pan: float = 0.5    # 0 left, 1 right
+    contrast: int = 0   # the acontrast effect (0-100); 0 = none
+
+
+@dataclass(frozen=True)
+class Crew:
+    master_gain: float = 0.0   # dB on the sequence's master
+    assets_gain: float = 0.0   # the Assets audio track (intro, outro, sounds)
+    game_gain: float = 0.0     # every player's game audio track
+    voice: dict[str, Mixer] = field(default_factory=dict)   # player -> their voice track
+
+    def voice_of(self, name: str) -> Mixer:
+        return self.voice.get(name, Mixer())
+
+
 def parse_colour(text: str, where: str) -> tuple[int, int, int]:
     h = str(text).lstrip("#")
     if len(h) != 6:
@@ -58,7 +78,33 @@ def parse_colour(text: str, where: str) -> tuple[int, int, int]:
 THEME_KEYS = {"sound", "backdrop", "font", "position", "offset", "orientation", "margin",
               "avatar_size", "sound_offset", "codec", "speech_threshold", "player", *BOOKENDS}
 PLAYER_KEYS = {"name", "colour", "avatar", "source", "voice_track"}
+CREW_FILE = Path("_assets") / "kuliss.toml"   # below the folder holding the session_* dirs
+CREW_KEYS = {"master_gain", "assets_gain", "game_gain", "voice"}
+VOICE_KEYS = {"gain", "pan", "contrast"}
 CODECS = ("ffv1", "qtrle")   # ffv1: free/open, lossless; qtrle: about 20% smaller files, no faster
+
+
+def _warn_unknown(table, known, where):
+    for key in sorted(table.keys() - known):
+        log.warning("%s: unknown key %r (ignored; typo?)", where, key)
+
+
+def _get(table, key, kind, default, where, check=lambda v: True, rule=""):
+    """table[key] if present, else default; dies unless it is a `kind` passing `check`."""
+    v = table.get(key, default)
+    if kind is float and type(v) is int:
+        v = float(v)
+    if type(v) is not kind or not check(v):
+        want = rule or {str: "text", int: "a whole number", float: "a number"}[kind]
+        die(f"{where}: {key} must be {want}, got {v!r}")
+    return v
+
+
+def nearest_theme(start: Path) -> Path | None:
+    """theme.toml in `start` or the nearest folder above it: one in the folder holding
+    the session_* dirs serves every session; a session's own one wins."""
+    return next((d / "theme.toml" for d in (start, *start.parents)
+                 if (d / "theme.toml").is_file()), None)
 
 
 def load_theme(path: Path) -> Theme:
@@ -70,20 +116,6 @@ def load_theme(path: Path) -> Theme:
         die(f"{path}: {e}")
     base = path.parent
 
-    def warn_unknown(table, known, where):
-        for key in sorted(table.keys() - known):
-            log.warning("%s: unknown key %r (ignored; typo?)", where, key)
-
-    def get(table, key, kind, default, where, check=lambda v: True, rule=""):
-        """table[key] if present, else default; dies unless it is a `kind` passing `check`."""
-        v = table.get(key, default)
-        if kind is float and type(v) is int:
-            v = float(v)
-        if type(v) is not kind or not check(v):
-            want = rule or {str: "text", int: "a whole number", float: "a number"}[kind]
-            die(f"{where}: {key} must be {want}, got {v!r}")
-        return v
-
     def file(value, key):
         if not isinstance(value, str) or not value:
             die(f"{path.name}: {key} must be a file path, got {value!r}")
@@ -92,7 +124,7 @@ def load_theme(path: Path) -> Theme:
             die(f"{path.name}: {key} = {value!r}: no such file ({p})")
         return p
 
-    warn_unknown(raw, THEME_KEYS, path.name)
+    _warn_unknown(raw, THEME_KEYS, path.name)
     table = raw.get("player", [])
     if not isinstance(table, list):
         die(f"{path.name}: players are written as [[player]] sections")
@@ -102,8 +134,8 @@ def load_theme(path: Path) -> Theme:
         missing = {"name", "colour", "avatar"} - p.keys()
         if missing:
             die(f"{where} is missing {', '.join(sorted(missing))}")
-        warn_unknown(p, PLAYER_KEYS, where)
-        name = get(p, "name", str, "", where, lambda v: v.strip() != "", "non-empty text")
+        _warn_unknown(p, PLAYER_KEYS, where)
+        name = _get(p, "name", str, "", where, lambda v: v.strip() != "", "non-empty text")
         source = p.get("source", [])
         source = [source] if isinstance(source, str) else source
         if not isinstance(source, list) or not all(isinstance(s, str) and s for s in source):
@@ -113,7 +145,7 @@ def load_theme(path: Path) -> Theme:
             colour=parse_colour(p["colour"], where),
             avatar=file(p["avatar"], f"{name}.avatar"),
             source=tuple(source),
-            voice_track=get(p, "voice_track", str, name, where),
+            voice_track=_get(p, "voice_track", str, name, where),
         ))
     if not 1 <= len(players) <= 8:
         die(f"{path.name}: needs 1-8 [[player]] sections, found {len(players)}")
@@ -128,22 +160,54 @@ def load_theme(path: Path) -> Theme:
         sound=file(raw["sound"], "sound"),
         backdrop=file(raw["backdrop"], "backdrop") if "backdrop" in raw else None,
         font=file(raw["font"], "font") if "font" in raw else None,
-        position=get(raw, "position", str, "top-left", w, lambda v: v in POSITIONS,
+        position=_get(raw, "position", str, "top-left", w, lambda v: v in POSITIONS,
                      "one of " + ", ".join(POSITIONS)),
-        offset=tuple(get(raw, "offset", list, [0, 0], w,
+        offset=tuple(_get(raw, "offset", list, [0, 0], w,
                          lambda v: len(v) == 2 and all(type(n) is int and abs(n) <= 4000
                                                        for n in v),
                          "[x, y] in whole pixels, e.g. [0, -40]")),
-        orientation=get(raw, "orientation", str, "horizontal", w,
+        orientation=_get(raw, "orientation", str, "horizontal", w,
                         lambda v: v in ORIENTATIONS, "one of " + ", ".join(ORIENTATIONS)),
-        margin=get(raw, "margin", int, 24, w, lambda v: 0 <= v <= 500, "0-500 (px)"),
-        avatar_size=get(raw, "avatar_size", int, 48, w, lambda v: 16 <= v <= 256,
+        margin=_get(raw, "margin", int, 24, w, lambda v: 0 <= v <= 500, "0-500 (px)"),
+        avatar_size=_get(raw, "avatar_size", int, 48, w, lambda v: 16 <= v <= 256,
                         "16-256 (px)"),
-        sound_offset=get(raw, "sound_offset", float, 0.0, w, lambda v: abs(v) <= 10,
+        sound_offset=_get(raw, "sound_offset", float, 0.0, w, lambda v: abs(v) <= 10,
                          "between -10 and 10 (s)"),
-        codec=get(raw, "codec", str, "ffv1", w, lambda v: v in CODECS,
+        codec=_get(raw, "codec", str, "ffv1", w, lambda v: v in CODECS,
                   "one of " + ", ".join(CODECS)),
-        speech_threshold=get(raw, "speech_threshold", float, 0.35, w,
+        speech_threshold=_get(raw, "speech_threshold", float, 0.35, w,
                              lambda v: 0.1 <= v <= 0.9, "between 0.1 and 0.9"),
         **{k: file(raw[k], k) for k in BOOKENDS if k in raw},
     )
+
+
+def load_crew(path: Path) -> Crew:
+    """The crew file; without one every track starts at 0 dB, centred."""
+    try:
+        raw = tomllib.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        log.warning("no crew file %s: new tracks start at 0 dB, centred", path)
+        return Crew()
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as e:
+        die(f"{path}: {e}")
+    w = path.name
+    _warn_unknown(raw, CREW_KEYS, w)
+
+    def gain(table, key, where):
+        return _get(table, key, float, 0.0, where, lambda v: -60 <= v <= 20,
+                    "between -60 and 20 (dB)")
+
+    voices = raw.get("voice", {})
+    if not isinstance(voices, dict) or not all(isinstance(v, dict) for v in voices.values()):
+        die(f"{w}: voices are written as [voice.<player>] sections")
+    voice = {}
+    for name, v in voices.items():
+        where = f"{w}: voice.{name}"
+        _warn_unknown(v, VOICE_KEYS, where)
+        voice[name] = Mixer(
+            gain=gain(v, "gain", where),
+            pan=_get(v, "pan", float, 0.5, where, lambda p: 0 <= p <= 1,
+                     "between 0 (left) and 1 (right)"),
+            contrast=_get(v, "contrast", int, 0, where, lambda c: 0 <= c <= 100, "0-100"))
+    return Crew(gain(raw, "master_gain", w), gain(raw, "assets_gain", w),
+                gain(raw, "game_gain", w), voice)

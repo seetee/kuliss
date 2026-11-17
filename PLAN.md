@@ -12,7 +12,8 @@ first voice clip starts. None of it has been opened in the Kdenlive GUI or liste
 
 For Kenneth, in this order:
 
-- [ ] Add the four intro/outro lines to a session's `theme.toml` (see `theme.example.toml`).
+- [x] The four intro/outro lines are in the shared PO3 `theme.toml` in the samkvam folder
+      (2026-11-17). Sessions 27 and 28 still have their own copy without them, which wins there.
 - [ ] Run `kuliss speaker` on a copy of an episode with no hand-placed intro, outro or
       swooshes; open it in Kdenlive. Check the first 10 s (intro video, music, the duck when
       the voices start), the last 40 s (outro music rising, card fading in and out), the
@@ -24,16 +25,18 @@ For Kenneth, in this order:
       track but does not move it or set its volume. Its `Assets` track also still holds 24
       hand-placed swooshes, so the swoosh plays twice until those are deleted.
 
-Open questions, to answer before more code:
+Decided 2026-11-17:
 
-- [ ] Session template: it still has the intro music on the `Assets` audio track, which would
-      double the intro. Removing it makes `kuliss sync` start the recordings at 0 instead of
-      after the music (`session.sync_session`, the `intro` lookup). Confirm, then remove it
-      from the template.
-- [ ] Namecards: there will be no `Nametags` track. Does the overlay replace the namecards
-      entirely, or should kuliss place them at some moments? The second is a new feature.
-- [ ] The duck follows the first voice *clip*, not the first word. Change only if a clip with
-      silence at its head turns out to duck too early.
+- No session template: `kuliss new` builds the project itself (1080p60, only the `Assets`
+  tracks); `kuliss sync` creates the players' tracks with the mixer from the crew file
+  `_assets/kuliss.toml` and starts the recordings at 0. Still to do by Kenneth:
+  - [ ] Put a `kuliss.toml` in `_assets` with the old template's mixer values (see
+        `crew.example.toml`). The old template can then be deleted.
+  - [ ] Open a fresh `kuliss new` + `kuliss sync` project in the Kdenlive GUI: track order,
+        mixer values (voice gain, pan, Audio contrast), and that Kdenlive saves it without
+        complaint. Verified so far only through `AppRun --render`.
+- Namecards: the overlay replaces them; no `Nametags` track.
+- The duck stays on the first voice clip.
 
 ## For Kenneth to judge
 
@@ -74,8 +77,7 @@ Open questions, to answer before more code:
 - [ ] First real guest `.mkv`: check that the created guest tracks look right in the GUI.
 - [ ] Known limits, fix only if they bite: re-syncing after clearing the tracks adds the files
       to the bin again (`timeline.add_source`); guest names with a hyphen or space
-      (`_anna-karin.mkv`) are skipped; absent players' namecards stay in the template's
-      `Nametags` track.
+      (`_anna-karin.mkv`) are skipped.
 
 ## Future options (only if needed)
 
