@@ -130,7 +130,7 @@ def sync_session(session_dir: Path) -> SyncResult:
             mixer = {"Voice audio": crew.voice_of(r.name),
                      "Game audio": Mixer(crew.game_gain)}.get(title)
             slug = re.sub(r"\W+", "_", name.lower()) + ("_a" if is_audio else "_v")
-            timeline._ensure_track(proj, is_audio, name, f"kuliss_{slug}", under="Assets",
+            timeline.ensure_track(proj, is_audio, name, f"kuliss_{slug}", under="Assets",
                                    mixer=mixer)
             tracks[name, is_audio] = None
             added.append((name, is_audio))

@@ -6,7 +6,7 @@ import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .errors import VoiceError, die  # noqa: F401  (VoiceError: re-exported)
+from .errors import die
 
 log = logging.getLogger(__name__)
 

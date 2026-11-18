@@ -53,8 +53,8 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 
 from .files import backup, write_atomic
-from .kdnotes import ORPHAN_SECTION, _extract_project, _ts_seconds
-from .mdoc import _Block, _find_block, _insert_child, _locate, _new_block, _parse, _render
+from .kdnotes import ORPHAN_SECTION, extract_project, ts_seconds
+from .mdoc import Block, find_block, insert_child, locate, new_block, parse_doc, render_doc
 
 EPISODE_PREFIX = 'avsnitt'
 BRYGG_SECTION = 'Bryggpromenader'
@@ -90,49 +90,49 @@ def _natural_key(name: str) -> list:
 
 # ── Skeleton repair ───────────────────────────────────────────────────────────
 
-def _session_title(dirname: str) -> str:
+def session_title(dirname: str) -> str:
     m = re.match(r'^session_(\d+)_(.+)$', dirname)
     return f'Session {m.group(1)} - {m.group(2)}' if m else dirname
 
 
-def _ensure_skeleton(root: _Block, title: str) -> tuple[_Block, _Block]:
+def ensure_skeleton(root: Block, title: str) -> tuple[Block, Block]:
     """Ensure # title, ## Mjukvaruversioner and ## Avsnittsinfo exist."""
     h1 = next((c for c in root.children if c.level == 1), None)
     if h1 is None:
-        h1 = _new_block(1, title)
-        _insert_child(root, 0, h1)
+        h1 = new_block(1, title)
+        insert_child(root, 0, h1)
 
-    software = _find_block(root, 2, 'Mjukvaruversioner')
+    software = find_block(root, 2, 'Mjukvaruversioner')
     if software is None:
-        software = _new_block(2, 'Mjukvaruversioner')
+        software = new_block(2, 'Mjukvaruversioner')
         software.lines = []
-        _insert_child(h1, 0, software)
+        insert_child(h1, 0, software)
 
-    info = _find_block(root, 2, 'Avsnittsinfo')
+    info = find_block(root, 2, 'Avsnittsinfo')
     if info is None:
-        info = _new_block(2, 'Avsnittsinfo')
-        parent, idx = _locate(root, software)
-        _insert_child(parent, idx + 1, info)
+        info = new_block(2, 'Avsnittsinfo')
+        parent, idx = locate(root, software)
+        insert_child(parent, idx + 1, info)
 
     return software, info
 
 
-def _ensure_episode(root: _Block, info: _Block, name: str) -> _Block:
-    episode = _find_block(root, 3, name)
+def ensure_episode(root: Block, info: Block, name: str) -> Block:
+    episode = find_block(root, 3, name)
     if episode is not None:
         return episode
-    episode = _Block(3, name, f'### {name}\n')
+    episode = Block(3, name, f'### {name}\n')
     episode.lines = ['\n'] + [f'**{f}:**\n' for f in METADATA_FIELDS] + ['\n']
     pos = len(info.children)
     for i, child in enumerate(info.children):
         if child.level == 3 and _natural_key(child.title) > _natural_key(name):
             pos = i
             break
-    _insert_child(info, pos, episode)
+    insert_child(info, pos, episode)
     return episode
 
 
-def _ensure_metadata(episode: _Block) -> None:
+def _ensure_metadata(episode: Block) -> None:
     # Normalize unbolded metadata lines ("Titel: x") to the bold form in place.
     for i, line in enumerate(episode.lines):
         for name in METADATA_FIELDS:
@@ -167,11 +167,11 @@ def _ensure_metadata(episode: _Block) -> None:
         episode.lines.insert(end, '\n')
 
 
-def _ensure_section(episode: _Block, name: str) -> _Block:
+def ensure_section(episode: Block, name: str) -> Block:
     for child in episode.children:
         if child.title == name:
             return child
-    block = _new_block(4, name)
+    block = new_block(4, name)
     if name in STANDARD_SECTIONS:
         rank = STANDARD_SECTIONS.index(name)
         pos = 0
@@ -180,7 +180,7 @@ def _ensure_section(episode: _Block, name: str) -> _Block:
                 pos = i + 1
     else:
         pos = len(episode.children)
-    _insert_child(episode, pos, block)
+    insert_child(episode, pos, block)
     return block
 
 
@@ -200,7 +200,7 @@ def _bullet(entry: tuple[str, str]) -> str:
     return f'* {ts} {text}' if ts else f'* {text}'
 
 
-def _set_bullets(section: _Block, bullets: list[str],
+def _set_bullets(section: Block, bullets: list[str],
                  tally: list[tuple[str, int]] | None = None,
                  appendix: list[str] | None = None) -> None:
     """Replace the managed lines of a section, keeping hand-written extras."""
@@ -238,10 +238,10 @@ def _chapters(
     if not items:
         return []
     items.append(('00:00', CHAPTER_OPENING))
-    return sorted(items, key=lambda c: _ts_seconds(c[0]))
+    return sorted(items, key=lambda c: ts_seconds(c[0]))
 
 
-def _set_chapter_lines(section: _Block, items: list[tuple[str, str]]) -> None:
+def _set_chapter_lines(section: Block, items: list[tuple[str, str]]) -> None:
     """Replace the managed chapter lines, keeping hand-written extras."""
     extra = [
         line for line in section.lines
@@ -254,7 +254,7 @@ def _set_chapter_lines(section: _Block, items: list[tuple[str, str]]) -> None:
     section.lines = lines
 
 
-def _prune_section(episode: _Block, title: str, keep) -> None:
+def _prune_section(episode: Block, title: str, keep) -> None:
     """Drop the childless `title` section unless `keep(line)` holds for a non-blank line."""
     for i, child in enumerate(episode.children):
         if child.title == title and not child.children:
@@ -263,18 +263,18 @@ def _prune_section(episode: _Block, title: str, keep) -> None:
             return
 
 
-def _prune_chapter_section(episode: _Block) -> None:
+def _prune_chapter_section(episode: Block) -> None:
     """Drop a Kapitel section that holds nothing but managed chapter lines."""
     _prune_section(episode, CHAPTER_SECTION, lambda line: not _CHAPTER_LINE_RE.match(line))
 
 
-def _prune_orphan_section(episode: _Block, incoming_bullets: set[str]) -> None:
+def _prune_orphan_section(episode: Block, incoming_bullets: set[str]) -> None:
     """Drop a legacy 'Other comments without a home' section when it is empty or
     contains nothing but bullets now emitted at the end of Noteworthy."""
     _prune_section(episode, ORPHAN_SECTION, lambda line: line.strip() not in incoming_bullets)
 
 
-def _update_software(software: _Block, version: str | None) -> None:
+def _update_software(software: Block, version: str | None) -> None:
     if not any(line.strip() for line in software.lines):
         software.lines = ['\n'] + [f'{line}\n' for line in SOFTWARE_DEFAULTS]
         if version:
@@ -309,8 +309,8 @@ def _locate_session_file(session_dir: Path) -> tuple[Path, str]:
 def show_episode(session_dir: Path, episode: str) -> str | None:
     """An episode's block from the session file, or None if it has none."""
     _, original = _locate_session_file(session_dir)
-    block = _find_block(_parse(original), 3, episode) if original else None
-    return None if block is None else _render(block).rstrip('\n')
+    block = find_block(parse_doc(original), 3, episode) if original else None
+    return None if block is None else render_doc(block).rstrip('\n')
 
 
 @dataclass
@@ -327,11 +327,11 @@ class Check:
         return f'✓ {self.name}: ready  [{self.notes}]'
 
 
-def checklist(root: _Block, episode_names: list[str]) -> list[Check]:
+def checklist(root: Block, episode_names: list[str]) -> list[Check]:
     """Per episode: missing metadata and YouTube pitfalls (Titel > 100, < 3 chapters)."""
     checks = []
     for name in episode_names:
-        episode = _find_block(root, 3, name)
+        episode = find_block(root, 3, name)
         if episode is None:
             checks.append(Check(name, ['not in session file'], 'no notes yet'))
             continue
@@ -413,20 +413,20 @@ def process_session(session_dir: Path, dry_run: bool = False) -> SessionResult:
     if original and not original.endswith('\n'):
         original += '\n'
 
-    root = _parse(original)
-    software, info = _ensure_skeleton(root, _session_title(session_dir.name))
+    root = parse_doc(original)
+    software, info = ensure_skeleton(root, session_title(session_dir.name))
 
     kdenlive_version = None
     episode_names = [name for name, _ in found]
 
     for name, project in found:
-        episode = _ensure_episode(root, info, name)
+        episode = ensure_episode(root, info, name)
         _ensure_metadata(episode)
-        _ensure_section(episode, 'Noteworthy')
+        ensure_section(episode, 'Noteworthy')
         _prune_orphan_section(episode, set())
 
         try:
-            notes, starred, version = _extract_project(project)
+            notes, starred, version = extract_project(project)
         except (ET.ParseError, OSError) as exc:
             res._warn(f'{name}: WARNING - could not read project file ({exc})')
             continue
@@ -447,7 +447,7 @@ def process_session(session_dir: Path, dry_run: bool = False) -> SessionResult:
             if orphans:
                 notes.setdefault('Noteworthy', [])
             for section_name, entries in notes.items():
-                section = _ensure_section(episode, section_name)
+                section = ensure_section(episode, section_name)
                 bullets = [_bullet(e) for e in entries]
                 appendix = None
                 if section_name == 'Noteworthy' and orphan_bullets:
@@ -458,7 +458,7 @@ def process_session(session_dir: Path, dry_run: bool = False) -> SessionResult:
                 tally = _tally(entries) if section_name == BRYGG_SECTION else None
                 _set_bullets(section, bullets, tally, appendix)
             if chapter_items:
-                _set_chapter_lines(_ensure_section(episode, CHAPTER_SECTION), chapter_items)
+                _set_chapter_lines(ensure_section(episode, CHAPTER_SECTION), chapter_items)
             counts = {s: len(e) for s, e in notes.items()}
             if orphans:
                 counts['Noteworthy'] += len(orphans)
@@ -476,7 +476,7 @@ def process_session(session_dir: Path, dry_run: bool = False) -> SessionResult:
         if child.level == 3 and child.title not in on_disk:
             res._warn(f"WARNING - section '### {child.title}' has no matching episode directory")
 
-    updated = _render(root)
+    updated = render_doc(root)
     res.md, res.original, res.updated = md, original, updated
     if updated == original:
         say(f'  {md.name} already up to date')
@@ -504,7 +504,7 @@ def process_session(session_dir: Path, dry_run: bool = False) -> SessionResult:
 
 # ── Discovery ─────────────────────────────────────────────────────────────────
 
-def _is_session_dir(path: Path) -> bool:
+def is_session_dir(path: Path) -> bool:
     return (
         path.name.startswith('session_')
         or any(path.glob('session_*.md'))
@@ -512,10 +512,10 @@ def _is_session_dir(path: Path) -> bool:
     )
 
 
-def _discover(start: Path) -> list[Path]:
+def discover(start: Path) -> list[Path]:
     """Sessions to process: walk up to a session dir, else scan for children."""
     for candidate in (start, *start.parents):
-        if _is_session_dir(candidate):
+        if is_session_dir(candidate):
             return [candidate]
     return sorted(
         (d for d in start.iterdir() if d.is_dir() and d.name.startswith('session_')),

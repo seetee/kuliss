@@ -60,11 +60,11 @@ def _finish(a) -> int:
 
 
 def _sessions(directory: str) -> list[Path]:
-    from .notes import _discover
+    from .notes import discover
     start = Path(directory).resolve()
     if not start.is_dir():
         die(f"{start} is not a directory")
-    return _discover(start)
+    return discover(start)
 
 
 def _notes(a) -> int:

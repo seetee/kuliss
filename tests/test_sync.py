@@ -10,7 +10,8 @@ import pytest
 
 from kuliss import session, sync
 from kuliss import timeline as T
-from kuliss.config import CREW_FILE, VoiceError, load_crew
+from kuliss.config import CREW_FILE, load_crew
+from kuliss.errors import VoiceError
 
 RNG = np.random.default_rng(67)
 

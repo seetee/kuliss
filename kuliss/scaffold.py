@@ -8,14 +8,14 @@ from pathlib import Path
 from .config import CREW_FILE, load_crew, nearest_theme
 from .errors import VoiceError, die
 from .files import write_atomic
-from .mdoc import _parse, _render
+from .mdoc import parse_doc, render_doc
 from .notes import (
     EPISODE_PREFIX,
-    _ensure_episode,
-    _ensure_section,
-    _ensure_skeleton,
-    _is_session_dir,
-    _session_title,
+    ensure_episode,
+    ensure_section,
+    ensure_skeleton,
+    is_session_dir,
+    session_title,
 )
 from .timeline import create_project
 
@@ -33,7 +33,7 @@ class Scaffolded:
 def next_session(start: Path) -> tuple[Path, int]:
     """(the folder holding the session_* dirs, the next session number), from
     anywhere in or above a session tree."""
-    root = next((c.parent for c in (start, *start.parents) if _is_session_dir(c)), start)
+    root = next((c.parent for c in (start, *start.parents) if is_session_dir(c)), start)
     numbers = [int(m[1]) for d in root.iterdir()
                if d.is_dir() and (m := re.match(r'^session_(\d+)_', d.name))]
     if not numbers:
@@ -56,12 +56,12 @@ def scaffold_session(root: Path, number: int, session_date: str,
     (session_dir / 'kortisar').mkdir()
     (session_dir / episode).mkdir()
 
-    doc = _parse('')
-    software, info = _ensure_skeleton(doc, _session_title(name))
+    doc = parse_doc('')
+    software, info = ensure_skeleton(doc, session_title(name))
     software.lines = ['\n'] + [f'{line}\n' for line in software_lines] + ['\n']
-    block = _ensure_episode(doc, info, episode)
-    _ensure_section(block, 'Noteworthy')
-    text = _render(doc)
+    block = ensure_episode(doc, info, episode)
+    ensure_section(block, 'Noteworthy')
+    text = render_doc(doc)
     write_atomic(session_dir / f'{name}.md', lambda tmp: tmp.write_text(text, encoding='utf-8'))
 
     if nearest_theme(session_dir) is None:

@@ -12,7 +12,8 @@ import skia
 
 from kuliss import cli, render, vad
 from kuliss import timeline as T
-from kuliss.config import Player, VoiceError, load_theme
+from kuliss.config import Player, load_theme
+from kuliss.errors import VoiceError
 
 PLAYERS = tuple(Player(n, (200, 60, 90), Path("x.png"), (f"*_{n[0].lower()}.mkv",), n)
                 for n in ("Henrik", "Kenneth"))

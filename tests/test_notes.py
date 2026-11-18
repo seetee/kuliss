@@ -688,20 +688,20 @@ class DiscoveryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             t = SessionTree(tmp)
             ep = t.episode('avsnitt207', NOTEWORTHY)
-            self.assertEqual(kc._discover(ep), [t.dir])
+            self.assertEqual(kc.discover(ep), [t.dir])
 
     def test_finds_session_children_naturally_sorted(self):
         with tempfile.TemporaryDirectory() as tmp:
             a = SessionTree(tmp, 'session_9_2025-01-01')
             b = SessionTree(tmp, 'session_10_2025-02-01')
-            self.assertEqual(kc._discover(Path(tmp)), [a.dir, b.dir])
+            self.assertEqual(kc.discover(Path(tmp)), [a.dir, b.dir])
 
     def test_session_dir_detected_by_md_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             d = Path(tmp) / 'somewhere'
             d.mkdir()
             (d / 'session_1_2025-01-01.md').write_text('# x\n', encoding='utf-8')
-            self.assertEqual(kc._discover(d), [d])
+            self.assertEqual(kc.discover(d), [d])
 
 
 if __name__ == '__main__':

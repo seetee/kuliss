@@ -383,12 +383,17 @@ def _find_track(project: Project, name: str, audio: bool) -> ET.Element | None:
     return None
 
 
+def _volume(level, **extra) -> dict:
+    """A volume filter's properties, in the order Kdenlive writes them."""
+    return {"window": 75, "max_gain": "20dB", "level": level, "channel_mask": -1,
+            "mlt_service": "volume", **extra}
+
+
 def _mix(tractor: ET.Element, base: str, m: Mixer) -> None:
     """A track's (or the master's) mixer, as Kdenlive writes it."""
     filters = [("contrast", {"mlt_service": "avfilter.acontrast", "kdenlive_id": "avfilter.acontrast",
                              "av.contrast": m.contrast})] if m.contrast else []
-    filters += [("volume", {"window": 75, "max_gain": "20dB", "level": m.gain, "channel_mask": -1,
-                            "mlt_service": "volume", "internal_added": 237, "disable": 0}),
+    filters += [("volume", _volume(m.gain, internal_added=237, disable=0)),
                 ("panner", {"channel": -1, "mlt_service": "panner", "internal_added": 237,
                             "start": m.pan, "disable": int(m.pan == 0.5)})]
     for key, fields in filters:
@@ -397,7 +402,7 @@ def _mix(tractor: ET.Element, base: str, m: Mixer) -> None:
             set_prop(f, k, v)
 
 
-def _ensure_track(project: Project, audio: bool, name: str = TRACK_NAME,
+def ensure_track(project: Project, audio: bool, name: str = TRACK_NAME,
                   base: str | None = None, under: str | None = None,
                   mixer: Mixer | None = None) -> ET.Element:
     """The named track's first playlist, emptied; the track is created if missing.
@@ -520,7 +525,7 @@ def _bookends(project: Project, media: dict[str, tuple[Path, int]], duck_at: flo
             continue
         clips = {k: _ensure_clip(project, k, *media[k], audio=audio,
                                  image=k.endswith("image")) for k in keys}
-        pl = _ensure_track(project, audio, _assets_track(project, audio),
+        pl = ensure_track(project, audio, _assets_track(project, audio),
                            "kuliss_assets_audio" if audio else "kuliss_assets_video",
                            under=TRACK_NAME)
         pos = 0
@@ -537,10 +542,8 @@ def _bookends(project: Project, media: dict[str, tuple[Path, int]], duck_at: flo
             set_prop(en, "kdenlive:id", kid)
             if k in LEVELS:
                 flt = ET.SubElement(en, "filter", id=f"kuliss_speaker_{k}_level")
-                for key, v in {"window": 75, "max_gain": "20dB", "level": LEVELS[k].format(at=1.467 + duck_at,
-                                                         end=1.467 + duck_at + DUCK_RAMP),
-                               "channel_mask": -1, "mlt_service": "volume",
-                               "kdenlive_id": "volume"}.items():
+                level = LEVELS[k].format(at=1.467 + duck_at, end=1.467 + duck_at + DUCK_RAMP)
+                for key, v in _volume(level, kdenlive_id="volume").items():
                     set_prop(flt, key, v)
             if k.endswith("image"):
                 a, b = round(FADE_IN * fps), round(FADE_OUT * fps)
@@ -564,7 +567,7 @@ def patch(project: Project, overlay: Path, rect: tuple[int, int, int, int],
     aid, aprod = _ensure_clip(project, "sound", sound, sound_len, audio=True)
 
     moved = _moved_placement(project)   # before the track is emptied
-    vpl = _ensure_track(project, audio=False)
+    vpl = ensure_track(project, audio=False)
     en = ET.SubElement(vpl, "entry", {"producer": vprod, "in": "0", "out": str(L - 1)})
     set_prop(en, "kdenlive:id", vid)
     if moved is not None:
@@ -577,7 +580,7 @@ def patch(project: Project, overlay: Path, rect: tuple[int, int, int, int],
                      "rotation": "0=0", PLACED: f"{x} {y} {w} {h}"}.items():
             set_prop(f, k, v)
 
-    apl = _ensure_track(project, audio=True)
+    apl = ensure_track(project, audio=True)
     pos = 0
     for i, c in enumerate(cut_frames):
         nxt = cut_frames[i + 1] if i + 1 < len(cut_frames) else L
@@ -680,8 +683,8 @@ def create_project(dest: Path, crew: Crew) -> None:
     """A new, empty session project: the Assets tracks, which the intro and outro go
     on (`kuliss finish`), and the crew's master volume. `kuliss sync` adds the rest."""
     proj = new_project(dest)
-    _ensure_track(proj, True, ASSETS, "assets_audio", mixer=Mixer(crew.assets_gain))
-    _ensure_track(proj, False, ASSETS, "assets_video")
+    ensure_track(proj, True, ASSETS, "assets_audio", mixer=Mixer(crew.assets_gain))
+    ensure_track(proj, False, ASSETS, "assets_video")
     master(proj, Mixer(crew.master_gain))
     write_atomic(dest, lambda tmp: save(proj, tmp))
 

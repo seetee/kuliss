@@ -65,7 +65,7 @@ class _NotesParser(HTMLParser):
             self._p_text += data
 
 
-def _ts_seconds(ts: str) -> float:
+def ts_seconds(ts: str) -> float:
     if not ts:
         return float('inf')  # untimestamped notes sort after timestamped ones
     seconds = 0
@@ -74,7 +74,7 @@ def _ts_seconds(ts: str) -> float:
     return seconds
 
 
-def _extract_project(
+def extract_project(
     kdenlive_path: Path,
 ) -> tuple[dict[str, list[tuple[str, str]]], list[tuple[str, str]], str | None]:
     """Return (notes, starred_chapters, kdenlive_version) from a .kdenlive file."""
@@ -92,8 +92,8 @@ def _extract_project(
         parser = _NotesParser()
         parser.feed(prop.text)
         notes = {
-            section: sorted(entries, key=lambda e: _ts_seconds(e[0]))
+            section: sorted(entries, key=lambda e: ts_seconds(e[0]))
             for section, entries in parser.sections.items() if entries
         }
-        starred = sorted(parser.chapters, key=lambda c: _ts_seconds(c[0]))
+        starred = sorted(parser.chapters, key=lambda c: ts_seconds(c[0]))
     return notes, starred, version
