@@ -59,6 +59,32 @@ kuliss runs on Windows 10 and 11 too; the automated tests run there on every cha
 
 Work on a copy the first time. If the crew moves projects between Linux and Windows, check that Kdenlive still finds every clip before running kuliss; that case has not been tested.
 
+## Where files live
+
+One folder holds the whole show, for Samkväm `samkvam.online/`. It is the unit you move, copy or sync to another computer, and nothing outside it is used.
+
+```
+samkvam.online/
+├── theme.toml              the main game's theme (kuliss finish)
+├── _assets/                everything shared between sessions
+│   ├── kuliss.toml         the crew file: track mixer levels (kuliss new, sync)
+│   ├── avatars/            one picture per player
+│   ├── episode-media/      intro and outro music and video
+│   ├── design-system/      outro card, logos, fonts
+│   └── namecard/, …        switch sound, namecards, title cards, green screens
+└── session_28_2025-10-24/
+    ├── theme.toml          only when this session plays another game
+    ├── session_28_2025-10-24.md
+    ├── session_28_2025-10-24.kdenlive
+    ├── sources/            the raw recordings
+    └── avsnitt228/avsnitt228.kdenlive
+```
+
+- **Shared files go in `_assets/`**, never in a session folder or elsewhere on the disk. That is where kuliss looks for the crew file, and themes point into it.
+- **A theme uses paths relative to itself**, such as `_assets/avatars/kenneth.png`, so it keeps working wherever the show folder lands, on Linux or Windows.
+- **kuliss's own clips repair themselves:** the overlay, switch sounds, intro and outro get their current path on every run of `kuliss finish`.
+- **Kdenlive stores full paths** (`/home/kenneth/documents/samkvam.online/_assets/…`) for clips outside the project's own folder, such as namecards placed by hand. On another computer Kdenlive reports them missing when the project opens; let its dialog search the show folder to find them again.
+
 ## Session workflow
 
 1. **Before recording:** in the folder that holds the `session_*` folders, run
@@ -121,7 +147,7 @@ Running it again after you re-edit reuses the same tracks and clips and regenera
 
 ### The theme
 
-Copy [`theme.example.toml`](theme.example.toml) to `theme.toml` next to the project, or into a folder above it; the nearest one wins. Keep one theme per game: for the game you play most, put it in the folder holding the `session_*` folders so every session uses it, and give a session with another game its own `theme.toml`. `kuliss new` warns when the new session has no theme above it.
+Copy [`theme.example.toml`](theme.example.toml) to `theme.toml` next to the project, or into a folder above it; the nearest one wins (see [Where files live](#where-files-live)). Keep one theme per game: for the game you play most, put it in the folder holding the `session_*` folders so every session uses it, and give a session with another game its own `theme.toml`. `kuliss new` warns when the new session has no theme above it.
 
 - `position` picks a corner (`top-left`, `top-right`, `bottom-left`, `bottom-right`) or an edge centre (`top`, `bottom`, `left`, `right`). `margin` is the distance from the edges the bar sits against, and `offset = [x, y]` nudges it from there in pixels (positive = right/down). For example, `position = "left"` with `offset = [0, -100]` centres the bar on the left edge, 100 px above the middle.
 - `orientation = "horizontal"` (the default) draws a row, `"vertical"` a column along the frame edge. The name label sits under the viewed avatar either way; the column spaces the avatars out to leave room for it.
