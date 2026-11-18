@@ -1,5 +1,6 @@
 """uv run pytest   (synthetic speech: noise bursts, so no media files are needed)"""
 
+import os
 from fractions import Fraction
 from pathlib import Path
 
@@ -191,3 +192,14 @@ def test_crew_file_is_checked(tmp_path):
         load_crew(crew)
     crew.write_text('game_gain = -21\n')   # a whole number is fine
     assert load_crew(crew).game_gain == -21.0 and load_crew(crew).voice_of("Anna").gain == 0
+
+
+def test_write_refuses_a_project_saved_meanwhile(tmp_path):
+    project = tmp_path / "p.kdenlive"
+    T.create_project(project, load_crew(tmp_path / "none.toml"))
+    mtime = project.stat().st_mtime_ns
+    proj = T.load(project)
+    os.utime(project, ns=(mtime + 10**9, mtime + 10**9))   # Kdenlive saved it while we worked
+    with pytest.raises(VoiceError, match="was saved while we worked"):
+        T.write(proj, project, mtime)
+    assert not list(tmp_path.glob("*.bak")) and not list(tmp_path.glob("*.partial"))
