@@ -26,7 +26,7 @@ uv run kuliss sync [session dir]                # sources/*.mkv onto the project
 uv run pytest                                   # single test: -k <name>; no media needed
 ```
 
-Test end to end only on a **copy** of a real project or session directory. The user's projects and Kdenlive backups live under `~/documents/samkvam.online/…` and `~/.local/share/kdenlive/.backup/`. CI (`.github/workflows/test.yml`) runs pytest on 3.12/3.14 from `uv.lock`, once more with `--resolution lowest-direct`, and `uv run ruff check` (rules in `pyproject.toml`: E, F, UP, B, SIM, I; line-length 100; E741 enforced, so no single-letter `l`).
+Test end to end only on a **copy** of a real project or session directory. The user's projects and Kdenlive backups live under `~/documents/samkvam.online/…` and `~/.local/share/kdenlive/.backup/`. CI (`.github/workflows/test.yml`) runs pytest on 3.12/3.14 (Linux and Windows) from `uv.lock`, once more with `--resolution lowest-direct`, then `uv run ruff check` and `uv run ruff format --check` (rules in `pyproject.toml`: E, F, UP, B, SIM, I; line-length 100; E741 enforced, so no single-letter `l`). Run `uv run ruff format` before committing. The actions are pinned to commit SHAs (tag in a comment); bump both together. No 3.15 job yet: `silero-vad-lite` 0.4.0 has no cp315 wheel (checked 2026-11-18).
 
 ## `kuliss finish`
 
