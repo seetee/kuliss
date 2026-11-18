@@ -106,6 +106,13 @@ def sync_session(session_dir: Path) -> SyncResult:
             if (r := probe(f, proj.fps))]
     if not recs:
         die(f"no recordings in {session_dir / 'sources'}")
+    by_name: dict[str, list[str]] = {}
+    for r in recs:
+        by_name.setdefault(r.name, []).append(r.path.name)
+    for name, files in by_name.items():
+        if len(files) > 1:   # one track per player: two files would overwrite each other
+            die(f"{name} has {len(files)} recordings ({', '.join(files)}); join them into "
+                "one file or move the extra ones out of sources/")
     tracks = {(t.name, t.audio): t for t in proj.tracks}
     for r in recs:
         for fmt, audio, _ in TRACKS:

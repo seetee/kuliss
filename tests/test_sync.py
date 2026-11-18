@@ -155,6 +155,13 @@ def test_recording_without_the_standard_streams_is_refused(tmp_path):
         session.sync_session(sdir)
 
 
+def test_two_recordings_of_one_player_are_refused(tmp_path):
+    sdir, _ = make_session(tmp_path)
+    src = sdir / "sources"
+    (src / "2026-10-30b_kenneth.mkv").write_bytes((src / "2026-10-30_k.mkv").read_bytes())
+    with pytest.raises(VoiceError, match="Kenneth has 2 recordings"):
+        session.sync_session(sdir)
+
 def test_guest_gets_own_tracks_and_crew_may_use_full_names(tmp_path):
     sdir, project = make_session(tmp_path)
     src = sdir / "sources"
