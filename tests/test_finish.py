@@ -609,7 +609,9 @@ def test_show_view_off_draws_only_who_talks(tmp_path):
     assert lay.V == lay.S
     painter = render.Painter(theme, lay)
     idle = painter.draw(1.0, -1, 0, 1.0, (0.0,))
-    viewed_on = render.Painter(load_theme(write_theme(tmp_path)), lay).draw(1.0, -1, 0, 1.0, (0.0,))
+    (tmp_path / "on").mkdir()  # its own folder: Windows can't overwrite a.png while skia holds it
+    viewed_on = render.Painter(load_theme(write_theme(tmp_path / "on")), lay)
+    viewed_on = viewed_on.draw(1.0, -1, 0, 1.0, (0.0,))
     assert (idle != viewed_on).any()  # no label, no enlarged avatar
     assert (painter.draw(1.0, -1, 0, 1.0, (1.0,)) != idle).any()  # the talking marker stays
 
