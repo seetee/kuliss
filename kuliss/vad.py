@@ -12,15 +12,15 @@ if TYPE_CHECKING:  # decode/speech_windows stay Kdenlive-free for Klatch
     from .timeline import Entry
 
 RATE = 16000
-WINDOW = 512        # samples per Silero call at 16 kHz (32 ms)
-ON = 0.35           # speech probability that starts "talking"; it ends below OFF_RATIO * ON
+WINDOW = 512  # samples per Silero call at 16 kHz (32 ms)
+ON = 0.35  # speech probability that starts "talking"; it ends below OFF_RATIO * ON
 OFF_RATIO = 0.6
-HANGOVER = 0.20     # s kept "talking" after the probability drops (bridges short pauses)
-MIN_BURST = 0.06    # s; shorter bursts (clicks, key presses) are dropped. Short words
+HANGOVER = 0.20  # s kept "talking" after the probability drops (bridges short pauses)
+MIN_BURST = 0.06  # s; shorter bursts (clicks, key presses) are dropped. Short words
 #                     ("ja", "nä") must survive: 0.12 lost one burst in ten on real voices
-LEAD = 2            # windows the marker starts before the detected onset (first syllables)
-WARMUP = 0.5        # s decoded before a clip's first frame, so Silero isn't cold at a cut
-LEVEL_RANGE = 30    # dB below a clip's loud speech that still moves the level
+LEAD = 2  # windows the marker starts before the detected onset (first syllables)
+WARMUP = 0.5  # s decoded before a clip's first frame, so Silero isn't cold at a cut
+LEVEL_RANGE = 30  # dB below a clip's loud speech that still moves the level
 
 
 def decode(path: str, stream: int, start: float, dur: float) -> np.ndarray:
@@ -30,7 +30,7 @@ def decode(path: str, stream: int, start: float, dur: float) -> np.ndarray:
             st = c.streams[stream]
             if st.type != "audio":
                 die(f"{path}: stream {stream} is {st.type}, not audio")
-            c.seek(int(start / st.time_base), stream=st)   # lands at or before start
+            c.seek(int(start / st.time_base), stream=st)  # lands at or before start
             rs = av.AudioResampler(format="flt", layout="mono", rate=RATE)
             chunks, first, got = [], None, 0
             for frame in c.decode(st):
@@ -49,7 +49,7 @@ def decode(path: str, stream: int, start: float, dur: float) -> np.ndarray:
     # the seek can land anywhere at or before start, including pts 0 (one big
     # cluster), so trim from where decoding actually began
     skip = max(0, round((start - (start if first is None else first)) * RATE))
-    return pcm[skip:skip + round(dur * RATE)]
+    return pcm[skip : skip + round(dur * RATE)]
 
 
 def smooth(probs: np.ndarray, on_at: float = ON) -> np.ndarray:
@@ -70,7 +70,7 @@ def smooth(probs: np.ndarray, on_at: float = ON) -> np.ndarray:
         if (e - s - hang) * WINDOW / RATE < MIN_BURST:
             on[s:e] = False
         else:
-            on[max(s - LEAD, 0):s] = True
+            on[max(s - LEAD, 0) : s] = True
     return on
 
 
@@ -78,8 +78,11 @@ def speech_windows(pcm: np.ndarray, on_at: float = ON) -> np.ndarray:
     """Per WINDOW samples of mono float32 at RATE: is it speech?"""
     vad = SileroVAD(RATE)
     n = len(pcm) // WINDOW
-    probs = np.fromiter((vad.process(memoryview(pcm[i * WINDOW:(i + 1) * WINDOW]))
-                         for i in range(n)), np.float32, n)
+    probs = np.fromiter(
+        (vad.process(memoryview(pcm[i * WINDOW : (i + 1) * WINDOW])) for i in range(n)),
+        np.float32,
+        n,
+    )
     return smooth(probs, on_at)
 
 
@@ -90,7 +93,7 @@ def window_levels(pcm: np.ndarray, speech: np.ndarray) -> np.ndarray:
     out = np.zeros(n, np.float32)
     if not speech.any():
         return out
-    db = 10 * np.log10((pcm[:n * WINDOW].reshape(n, WINDOW) ** 2).mean(1) + 1e-12)
+    db = 10 * np.log10((pcm[: n * WINDOW].reshape(n, WINDOW) ** 2).mean(1) + 1e-12)
     top = np.percentile(db[speech], 95)
     out[speech] = np.clip(1 + (db[speech] - top) / LEVEL_RANGE, 0.05, 1)
     return out
@@ -111,8 +114,7 @@ def talking(entries: list["Entry"], fps: float, length: int, on_at: float = ON) 
         speech = speech_windows(pcm, on_at)
         if not len(speech):
             continue
-        idx = np.minimum(((np.arange(n) / fps + lead) * RATE / WINDOW).astype(int),
-                         len(speech) - 1)
-        seg = out[e.start:e.start + n]
+        idx = np.minimum(((np.arange(n) / fps + lead) * RATE / WINDOW).astype(int), len(speech) - 1)
+        seg = out[e.start : e.start + n]
         np.maximum(seg, window_levels(pcm, speech)[idx], out=seg)
     return out

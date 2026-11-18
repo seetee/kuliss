@@ -383,8 +383,9 @@ they can be used from Python:
 
 ```python
 from kuliss import finish
+
 a = finish.analyse("avsnitt217/avsnitt217.kdenlive")
-print(a.stats())                      # (name, % on screen, % talking) per player
+print(a.stats())  # (name, % on screen, % talking) per player
 finish.apply(a, finish.render_overlay(a))
 ```
 

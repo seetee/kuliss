@@ -11,8 +11,16 @@ from .errors import die
 
 log = logging.getLogger(__name__)
 
-POSITIONS = ("top-left", "top", "top-right", "left", "right",
-             "bottom-left", "bottom", "bottom-right")   # corners and edge centres
+POSITIONS = (
+    "top-left",
+    "top",
+    "top-right",
+    "left",
+    "right",
+    "bottom-left",
+    "bottom",
+    "bottom-right",
+)  # corners and edge centres
 ORIENTATIONS = ("horizontal", "vertical")
 BOOKENDS = ("intro_audio", "intro_video", "outro_audio", "outro_image")
 
@@ -23,8 +31,8 @@ class Player:
     colour: tuple[int, int, int]
     avatar: Path
     source: tuple[str, ...]  # globs matched against clip file names, e.g. "*_h.mkv";
-                             # empty = the files used on the voice track
-    voice_track: str     # Kdenlive audio track holding this player's voice
+    # empty = the files used on the voice track
+    voice_track: str  # Kdenlive audio track holding this player's voice
 
 
 @dataclass(frozen=True)
@@ -34,15 +42,15 @@ class Theme:
     backdrop: Path | None = None
     font: Path | None = None
     position: str = "top-left"
-    offset: tuple[int, int] = (0, 0)   # px nudge after placing: +x right, +y down
-    orientation: str = "horizontal"   # a row of avatars, or a column along the edge
-    margin: int = 24         # px from the frame edges
-    avatar_size: int = 48    # px; the viewed player's avatar is drawn larger
+    offset: tuple[int, int] = (0, 0)  # px nudge after placing: +x right, +y down
+    orientation: str = "horizontal"  # a row of avatars, or a column along the edge
+    margin: int = 24  # px from the frame edges
+    avatar_size: int = 48  # px; the viewed player's avatar is drawn larger
     sound_offset: float = 0.0  # s; shifts every transition sound relative to its cut
-    codec: str = "ffv1"        # overlay video codec, see CODECS
-    speech_threshold: float = 0.35   # Silero speech probability that counts as talking
-    intro_audio: Path | None = None   # the four below: placed on the Assets tracks,
-    intro_video: Path | None = None   # see timeline.bookends
+    codec: str = "ffv1"  # overlay video codec, see CODECS
+    speech_threshold: float = 0.35  # Silero speech probability that counts as talking
+    intro_audio: Path | None = None  # the four below: placed on the Assets tracks,
+    intro_video: Path | None = None  # see timeline.bookends
     outro_audio: Path | None = None
     outro_image: Path | None = None
 
@@ -50,17 +58,18 @@ class Theme:
 @dataclass(frozen=True)
 class Mixer:
     """A Kdenlive track's mixer: what a new track gets; later changes in Kdenlive stay."""
-    gain: float = 0.0   # dB
-    pan: float = 0.5    # 0 left, 1 right
-    contrast: int = 0   # the acontrast effect (0-100); 0 = none
+
+    gain: float = 0.0  # dB
+    pan: float = 0.5  # 0 left, 1 right
+    contrast: int = 0  # the acontrast effect (0-100); 0 = none
 
 
 @dataclass(frozen=True)
 class Crew:
-    master_gain: float = 0.0   # dB on the sequence's master
-    assets_gain: float = 0.0   # the Assets audio track (intro, outro, sounds)
-    game_gain: float = 0.0     # every player's game audio track
-    voice: dict[str, Mixer] = field(default_factory=dict)   # player -> their voice track
+    master_gain: float = 0.0  # dB on the sequence's master
+    assets_gain: float = 0.0  # the Assets audio track (intro, outro, sounds)
+    game_gain: float = 0.0  # every player's game audio track
+    voice: dict[str, Mixer] = field(default_factory=dict)  # player -> their voice track
 
     def voice_of(self, name: str) -> Mixer:
         return self.voice.get(name, Mixer())
@@ -69,20 +78,33 @@ class Crew:
 def parse_colour(text: str, where: str) -> tuple[int, int, int]:
     digits = str(text).lstrip("#")
     if len(digits) != 6:
-        die(f"{where}: colour must look like \"#e0a030\", got {text!r}")
+        die(f'{where}: colour must look like "#e0a030", got {text!r}')
     try:
-        return tuple(int(digits[i:i + 2], 16) for i in (0, 2, 4))
+        return tuple(int(digits[i : i + 2], 16) for i in (0, 2, 4))
     except ValueError:
-        die(f"{where}: colour must look like \"#e0a030\", got {text!r}")
+        die(f'{where}: colour must look like "#e0a030", got {text!r}')
 
 
-THEME_KEYS = {"sound", "backdrop", "font", "position", "offset", "orientation", "margin",
-              "avatar_size", "sound_offset", "codec", "speech_threshold", "player", *BOOKENDS}
+THEME_KEYS = {
+    "sound",
+    "backdrop",
+    "font",
+    "position",
+    "offset",
+    "orientation",
+    "margin",
+    "avatar_size",
+    "sound_offset",
+    "codec",
+    "speech_threshold",
+    "player",
+    *BOOKENDS,
+}
 PLAYER_KEYS = {"name", "colour", "avatar", "source", "voice_track"}
-CREW_FILE = Path("_assets") / "kuliss.toml"   # below the folder holding the session_* dirs
+CREW_FILE = Path("_assets") / "kuliss.toml"  # below the folder holding the session_* dirs
 CREW_KEYS = {"master_gain", "assets_gain", "game_gain", "voice"}
 VOICE_KEYS = {"gain", "pan", "contrast"}
-CODECS = ("ffv1", "qtrle")   # ffv1: free/open, lossless; qtrle: about 20% smaller files, no faster
+CODECS = ("ffv1", "qtrle")  # ffv1: free/open, lossless; qtrle: about 20% smaller files, no faster
 
 
 def _warn_unknown(table: dict, known: set[str], where: str) -> None:
@@ -90,8 +112,15 @@ def _warn_unknown(table: dict, known: set[str], where: str) -> None:
         log.warning("%s: unknown key %r (ignored; typo?)", where, key)
 
 
-def _get(table: dict, key: str, kind: type, default, where: str,
-         check: Callable[[object], bool] = lambda value: True, rule: str = ""):
+def _get(
+    table: dict,
+    key: str,
+    kind: type,
+    default,
+    where: str,
+    check: Callable[[object], bool] = lambda value: True,
+    rule: str = "",
+):
     """table[key] if present, else default; dies unless it is a `kind` passing `check`."""
     value = table.get(key, default)
     if kind is float and type(value) is int:
@@ -105,8 +134,9 @@ def _get(table: dict, key: str, kind: type, default, where: str,
 def nearest_theme(start: Path) -> Path | None:
     """theme.toml in `start` or the nearest folder above it: one in the folder holding
     the session_* dirs serves every session; a session's own one wins."""
-    return next((d / "theme.toml" for d in (start, *start.parents)
-                 if (d / "theme.toml").is_file()), None)
+    return next(
+        (d / "theme.toml" for d in (start, *start.parents) if (d / "theme.toml").is_file()), None
+    )
 
 
 def load_theme(path: Path) -> Theme:
@@ -142,43 +172,74 @@ def load_theme(path: Path) -> Theme:
         source = [source] if isinstance(source, str) else source
         if not isinstance(source, list) or not all(isinstance(s, str) and s for s in source):
             die(f"{where}: source must be a file-name pattern or a list of them")
-        players.append(Player(
-            name=name,
-            colour=parse_colour(entry["colour"], where),
-            avatar=file(entry["avatar"], f"{name}.avatar"),
-            source=tuple(source),
-            voice_track=_get(entry, "voice_track", str, name, where),
-        ))
+        players.append(
+            Player(
+                name=name,
+                colour=parse_colour(entry["colour"], where),
+                avatar=file(entry["avatar"], f"{name}.avatar"),
+                source=tuple(source),
+                voice_track=_get(entry, "voice_track", str, name, where),
+            )
+        )
     if not 1 <= len(players) <= 8:
         die(f"{path.name}: needs 1-8 [[player]] sections, found {len(players)}")
     if len({p.name for p in players}) != len(players):
         die(f"{path.name}: player names must be unique")
 
     if "sound" not in raw:
-        die(f"{path.name}: missing sound = \"...\" (the transition sound)")
-    w = path.name   # where: for the error messages
+        die(f'{path.name}: missing sound = "..." (the transition sound)')
+    w = path.name  # where: for the error messages
     return Theme(
         players=tuple(players),
         sound=file(raw["sound"], "sound"),
         backdrop=file(raw["backdrop"], "backdrop") if "backdrop" in raw else None,
         font=file(raw["font"], "font") if "font" in raw else None,
-        position=_get(raw, "position", str, "top-left", w, lambda v: v in POSITIONS,
-                     "one of " + ", ".join(POSITIONS)),
-        offset=tuple(_get(raw, "offset", list, [0, 0], w,
-                         lambda v: len(v) == 2 and all(type(n) is int and abs(n) <= 4000
-                                                       for n in v),
-                         "[x, y] in whole pixels, e.g. [0, -40]")),
-        orientation=_get(raw, "orientation", str, "horizontal", w,
-                        lambda v: v in ORIENTATIONS, "one of " + ", ".join(ORIENTATIONS)),
+        position=_get(
+            raw,
+            "position",
+            str,
+            "top-left",
+            w,
+            lambda v: v in POSITIONS,
+            "one of " + ", ".join(POSITIONS),
+        ),
+        offset=tuple(
+            _get(
+                raw,
+                "offset",
+                list,
+                [0, 0],
+                w,
+                lambda v: len(v) == 2 and all(type(n) is int and abs(n) <= 4000 for n in v),
+                "[x, y] in whole pixels, e.g. [0, -40]",
+            )
+        ),
+        orientation=_get(
+            raw,
+            "orientation",
+            str,
+            "horizontal",
+            w,
+            lambda v: v in ORIENTATIONS,
+            "one of " + ", ".join(ORIENTATIONS),
+        ),
         margin=_get(raw, "margin", int, 24, w, lambda v: 0 <= v <= 500, "0-500 (px)"),
-        avatar_size=_get(raw, "avatar_size", int, 48, w, lambda v: 16 <= v <= 256,
-                        "16-256 (px)"),
-        sound_offset=_get(raw, "sound_offset", float, 0.0, w, lambda v: abs(v) <= 10,
-                         "between -10 and 10 (s)"),
-        codec=_get(raw, "codec", str, "ffv1", w, lambda v: v in CODECS,
-                  "one of " + ", ".join(CODECS)),
-        speech_threshold=_get(raw, "speech_threshold", float, 0.35, w,
-                             lambda v: 0.1 <= v <= 0.9, "between 0.1 and 0.9"),
+        avatar_size=_get(raw, "avatar_size", int, 48, w, lambda v: 16 <= v <= 256, "16-256 (px)"),
+        sound_offset=_get(
+            raw, "sound_offset", float, 0.0, w, lambda v: abs(v) <= 10, "between -10 and 10 (s)"
+        ),
+        codec=_get(
+            raw, "codec", str, "ffv1", w, lambda v: v in CODECS, "one of " + ", ".join(CODECS)
+        ),
+        speech_threshold=_get(
+            raw,
+            "speech_threshold",
+            float,
+            0.35,
+            w,
+            lambda v: 0.1 <= v <= 0.9,
+            "between 0.1 and 0.9",
+        ),
         **{k: file(raw[k], k) for k in BOOKENDS if k in raw},
     )
 
@@ -196,8 +257,9 @@ def load_crew(path: Path) -> Crew:
     _warn_unknown(raw, CREW_KEYS, w)
 
     def gain(table: dict, key: str, where: str) -> float:
-        return _get(table, key, float, 0.0, where, lambda v: -60 <= v <= 20,
-                    "between -60 and 20 (dB)")
+        return _get(
+            table, key, float, 0.0, where, lambda v: -60 <= v <= 20, "between -60 and 20 (dB)"
+        )
 
     voices = raw.get("voice", {})
     if not isinstance(voices, dict) or not all(isinstance(v, dict) for v in voices.values()):
@@ -208,8 +270,11 @@ def load_crew(path: Path) -> Crew:
         _warn_unknown(v, VOICE_KEYS, where)
         voice[name] = Mixer(
             gain=gain(v, "gain", where),
-            pan=_get(v, "pan", float, 0.5, where, lambda p: 0 <= p <= 1,
-                     "between 0 (left) and 1 (right)"),
-            contrast=_get(v, "contrast", int, 0, where, lambda c: 0 <= c <= 100, "0-100"))
-    return Crew(gain(raw, "master_gain", w), gain(raw, "assets_gain", w),
-                gain(raw, "game_gain", w), voice)
+            pan=_get(
+                v, "pan", float, 0.5, where, lambda p: 0 <= p <= 1, "between 0 (left) and 1 (right)"
+            ),
+            contrast=_get(v, "contrast", int, 0, where, lambda c: 0 <= c <= 100, "0-100"),
+        )
+    return Crew(
+        gain(raw, "master_gain", w), gain(raw, "assets_gain", w), gain(raw, "game_gain", w), voice
+    )

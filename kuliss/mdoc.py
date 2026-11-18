@@ -4,7 +4,7 @@ round-trip byte for byte."""
 import re
 from dataclasses import dataclass, field
 
-_HEADING_RE = re.compile(r'^(#{1,6})\s+(\S.*?)\s*$')
+_HEADING_RE = re.compile(r"^(#{1,6})\s+(\S.*?)\s*$")
 
 
 @dataclass(slots=True)
@@ -15,11 +15,11 @@ class Block:
     title: str
     heading_line: str | None = None
     lines: list[str] = field(default_factory=list)
-    children: list['Block'] = field(default_factory=list)
+    children: list["Block"] = field(default_factory=list)
 
 
 def parse_doc(text: str) -> Block:
-    root = Block(0, '')
+    root = Block(0, "")
     stack = [root]
     for line in text.splitlines(keepends=True):
         m = _HEADING_RE.match(line)
@@ -41,12 +41,12 @@ def render_doc(block: Block) -> str:
         parts.append(block.heading_line)
     parts.extend(block.lines)
     parts.extend(render_doc(child) for child in block.children)
-    return ''.join(parts)
+    return "".join(parts)
 
 
 def new_block(level: int, title: str) -> Block:
-    block = Block(level, title, f'{"#" * level} {title}\n')
-    block.lines = ['\n']
+    block = Block(level, title, f"{'#' * level} {title}\n")
+    block.lines = ["\n"]
     return block
 
 
@@ -74,11 +74,11 @@ def insert_child(parent: Block, pos: int, block: Block) -> None:
     """Insert a child block, ensuring a blank line precedes its heading."""
     if pos == 0:
         if parent.lines and parent.lines[-1].strip() or not parent.lines and parent.heading_line:
-            parent.lines.append('\n')
+            parent.lines.append("\n")
     else:
         prev = parent.children[pos - 1]
         while prev.children:
             prev = prev.children[-1]
         if not prev.lines or prev.lines[-1].strip():
-            prev.lines.append('\n')
+            prev.lines.append("\n")
     parent.children.insert(pos, block)

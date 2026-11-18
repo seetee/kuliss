@@ -40,11 +40,14 @@ def _progress(done: int, total: int) -> None:
 
 def _finish(args: argparse.Namespace) -> int:
     from . import finish
+
     analysis = finish.analyse(args.project, args.theme)
     if analysis.absent:
         print("Not in this project (no voice clips): " + ", ".join(analysis.absent))
     fps = analysis.proj.fps
-    print(f"{analysis.path.name}: {analysis.proj.length / fps / 60:.1f} min, {len(analysis.cuts)} view switches")
+    print(
+        f"{analysis.path.name}: {analysis.proj.length / fps / 60:.1f} min, {len(analysis.cuts)} view switches"
+    )
     print(f"  speech detected in {analysis.seconds:.0f} s")
     for name, on_screen, talking in analysis.stats():
         print(f"  {name:<12} on screen {on_screen:4.1f}%   talking {talking:4.1f}%")
@@ -61,6 +64,7 @@ def _finish(args: argparse.Namespace) -> int:
 
 def _sessions(directory: str) -> list[Path]:
     from .notes import discover
+
     start = Path(directory).resolve()
     if not start.is_dir():
         die(f"{start} is not a directory")
@@ -69,13 +73,19 @@ def _sessions(directory: str) -> list[Path]:
 
 def _notes(args: argparse.Namespace) -> int:
     from . import notes
+
     sessions = _sessions(args.directory)
     if not sessions:
-        die(f"{Path(args.directory).resolve()} is not inside a session directory and contains "
-            "no session_* directories")
+        die(
+            f"{Path(args.directory).resolve()} is not inside a session directory and contains "
+            "no session_* directories"
+        )
     if args.show:
-        shown = [text for session in sessions
-             if (text := notes.show_episode(session, args.show)) is not None]
+        shown = [
+            text
+            for session in sessions
+            if (text := notes.show_episode(session, args.show)) is not None
+        ]
         if not shown:
             die(f"episode {args.show!r} not found in any session file")
         print(shown[0])
@@ -100,6 +110,7 @@ def _prompt(question: str, default: str) -> str:
 def _new(args: argparse.Namespace) -> int:
     from . import scaffold
     from .notes import SOFTWARE_DEFAULTS
+
     start = Path(args.directory).resolve()
     if not start.is_dir():
         die(f"{start} is not a directory")
@@ -117,7 +128,7 @@ def _new(args: argparse.Namespace) -> int:
     print("Software versions (Enter keeps the value, type to replace):")
     software = []
     for line in SOFTWARE_DEFAULTS:
-        indent = line[:len(line) - len(line.lstrip())]
+        indent = line[: len(line) - len(line.lstrip())]
         text = line.lstrip()[2:]  # drop the '* ' bullet
         software.append(f"{indent}* {_prompt(f'  {text}: ', text)}")
     while extra := _prompt("  add more (empty to finish): ", ""):
@@ -135,12 +146,15 @@ def _new(args: argparse.Namespace) -> int:
 
 def _sync(args: argparse.Namespace) -> int:
     from . import session
+
     sessions = _sessions(args.directory)
     if len(sessions) != 1:
         die("run it inside one session directory, or name one")
     res = session.sync_session(sessions[0])
-    print(f"{res.path.name}: synced {len(res.offsets) + 1} recordings on their call audio "
-          f"in {res.seconds:.0f} s")
+    print(
+        f"{res.path.name}: synced {len(res.offsets) + 1} recordings on their call audio "
+        f"in {res.seconds:.0f} s"
+    )
     print(f"  {res.reference:<10} reference")
     for name, (seconds, confidence) in res.offsets.items():
         print(f"  {name:<10} {seconds:+9.2f} s   (confidence {confidence:.0f})")
@@ -151,43 +165,79 @@ def _sync(args: argparse.Namespace) -> int:
 
 
 def parser() -> argparse.ArgumentParser:
-    ap = argparse.ArgumentParser(prog="kuliss", description=__doc__.split("\n\nThis module")[0],
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        prog="kuliss",
+        description=__doc__.split("\n\nThis module")[0],
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     ap.add_argument("--version", action="version", version=f"%(prog)s {version('kuliss')}")
     sub = ap.add_subparsers(dest="command", metavar="COMMAND", required=True)
 
-    p = sub.add_parser("finish", help="overlay, switch sounds, intro and outro",
-                       description="Finish analysis episode: add the who-we-watch / who-talks overlay, "
-                       "a sound at every switch, and the intro and outro.")
+    p = sub.add_parser(
+        "finish",
+        help="overlay, switch sounds, intro and outro",
+        description="Finish analysis episode: add the who-we-watch / who-talks overlay, "
+        "a sound at every switch, and the intro and outro.",
+    )
     p.add_argument("project", help="the .kdenlive project to update in place")
     p.add_argument("--theme", help="theme TOML (default: theme.toml next to or above the project)")
     p.add_argument("--dry-run", action="store_true", help="analyse and report; write nothing")
-    p.add_argument("--preview", type=positive, metavar="SECS",
-                   help="render only the first SECS to PROJECT-overlay-preview.mkv; project untouched")
+    p.add_argument(
+        "--preview",
+        type=positive,
+        metavar="SECS",
+        help="render only the first SECS to PROJECT-overlay-preview.mkv; project untouched",
+    )
     p.set_defaults(run=_finish)
 
-    p = sub.add_parser("notes", help="sync Document Notes into the session .md",
-                       description="Sync Kdenlive episode notes into the session Markdown file.")
-    p.add_argument("directory", nargs="?", default=".",
-                   help="any directory inside a session tree, a session directory, or a "
-                        "parent of session_* directories (default: current directory)")
-    p.add_argument("--dry-run", action="store_true",
-                   help="show what would change as a diff, without writing anything")
-    p.add_argument("--show", metavar="EPISODE",
-                   help="print analysis episode's metadata and notes from the session file, then exit")
+    p = sub.add_parser(
+        "notes",
+        help="sync Document Notes into the session .md",
+        description="Sync Kdenlive episode notes into the session Markdown file.",
+    )
+    p.add_argument(
+        "directory",
+        nargs="?",
+        default=".",
+        help="any directory inside a session tree, a session directory, or a "
+        "parent of session_* directories (default: current directory)",
+    )
+    p.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="show what would change as a diff, without writing anything",
+    )
+    p.add_argument(
+        "--show",
+        metavar="EPISODE",
+        help="print analysis episode's metadata and notes from the session file, then exit",
+    )
     p.set_defaults(run=_notes)
 
-    p = sub.add_parser("new", help="scaffold the next session directory",
-                       description="Scaffold the next session directory and its Kdenlive project.")
-    p.add_argument("directory", nargs="?", default=".",
-                   help="the folder holding the session_* directories, or anywhere inside one")
+    p = sub.add_parser(
+        "new",
+        help="scaffold the next session directory",
+        description="Scaffold the next session directory and its Kdenlive project.",
+    )
+    p.add_argument(
+        "directory",
+        nargs="?",
+        default=".",
+        help="the folder holding the session_* directories, or anywhere inside one",
+    )
     p.set_defaults(run=_new)
 
-    p = sub.add_parser("sync", help="put sources/*.mkv in sync on the project's tracks",
-                       description="Put a session's recordings, in sync, on the session "
-                                   "project's tracks.")
-    p.add_argument("directory", nargs="?", default=".",
-                   help="the session directory, or any directory inside it (default: .)")
+    p = sub.add_parser(
+        "sync",
+        help="put sources/*.mkv in sync on the project's tracks",
+        description="Put a session's recordings, in sync, on the session project's tracks.",
+    )
+    p.add_argument(
+        "directory",
+        nargs="?",
+        default=".",
+        help="the session directory, or any directory inside it (default: .)",
+    )
     p.set_defaults(run=_sync)
     return ap
 

@@ -39,4 +39,4 @@ line-length = 100
 [tool.ruff.lint]
 # E741 stays on: no single-letter `l`
 select = ["E", "F", "UP", "B", "SIM", "I"]
-ignore = ["E501"]   # a few long test lines; code stays under 100 by hand
+ignore = ["E501"]  # ruff format keeps code under 100; a few strings and comments run over

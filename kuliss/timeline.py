@@ -22,53 +22,60 @@ from .errors import die
 from .files import backup, write_atomic
 
 TRACK_NAME = "kuliss"
-OLD_TRACK_NAME = "kuliss speaker"   # until 2026-11-11; a re-run renames it
-SOUND_LEVEL = -24   # dB on our audio track's mixer when created, the crew's level for effects
+OLD_TRACK_NAME = "kuliss speaker"  # until 2026-11-11; a re-run renames it
+SOUND_LEVEL = -24  # dB on our audio track's mixer when created, the crew's level for effects
 CLIP_PREFIX = "kuliss speaker"
-SUPPORTED_VERSIONS = {"1.1"}   # kdenlive:docproperties.version (Kdenlive 23.08 - 26.08)
-ASSETS, ASSETS_OURS = "Assets", "Assets Kuliss"   # where the intro and outro go
+SUPPORTED_VERSIONS = {"1.1"}  # kdenlive:docproperties.version (Kdenlive 23.08 - 26.08)
+ASSETS, ASSETS_OURS = "Assets", "Assets Kuliss"  # where the intro and outro go
 # The intro's and outro's volume curves, in source time: full, then ducked 15 dB under
 # the voices / ducked, then full for the outro card. Copied from the crew's episodes;
 # the intro's duck starts {at} s into the timeline, where the first voice clip does.
-LEVELS = {"intro_audio": "00:00:01.467$=0;00:00:{at:06.3f}=0;00:00:{end:06.3f}$=-15",
-          "outro_audio": "00:00:01.717=-15;00:00:18.717=-15;00:00:19.533=0"}
-DUCK_AT, DUCK_RANGE, DUCK_RAMP = 5.5, (1.0, 15.0), 0.483   # s; default, allowed, ramp length
-FADE_IN, FADE_OUT = 1.533, 0.5   # s; the outro card's
-PICTURES = {"avformat", "avformat-novalidate", "qimage", "pixbuf"}   # video and image clips
-TRANSFORMS = {"qtblend", "affine"}   # an entry with one of these is placed, not full-screen
-PLACED = "kuliss:rect"   # on our overlay's Transform effect: the "x y w h" we last wrote
+LEVELS = {
+    "intro_audio": "00:00:01.467$=0;00:00:{at:06.3f}=0;00:00:{end:06.3f}$=-15",
+    "outro_audio": "00:00:01.717=-15;00:00:18.717=-15;00:00:19.533=0",
+}
+DUCK_AT, DUCK_RANGE, DUCK_RAMP = 5.5, (1.0, 15.0), 0.483  # s; default, allowed, ramp length
+FADE_IN, FADE_OUT = 1.533, 0.5  # s; the outro card's
+PICTURES = {"avformat", "avformat-novalidate", "qimage", "pixbuf"}  # video and image clips
+TRANSFORMS = {"qtblend", "affine"}  # an entry with one of these is placed, not full-screen
+PLACED = "kuliss:rect"  # on our overlay's Transform effect: the "x y w h" we last wrote
 # what the editor may have set on our bin clips in Kdenlive; kept across re-runs
-EDITOR_PROPS = ("kdenlive:folderid", "kdenlive:markers", "kdenlive:rating", "kdenlive:tags",
-                "kdenlive:description")
+EDITOR_PROPS = (
+    "kdenlive:folderid",
+    "kdenlive:markers",
+    "kdenlive:rating",
+    "kdenlive:tags",
+    "kdenlive:description",
+)
 
 
 @dataclass
 class Entry:
-    start: int         # timeline frame
-    length: int        # frames
-    resource: str      # source file
-    src_in: int        # first source frame used
-    audio_index: int   # absolute ffmpeg stream index, -1 if none
-    fullscreen: bool   # picture shown untransformed, covering the tracks below
+    start: int  # timeline frame
+    length: int  # frames
+    resource: str  # source file
+    src_in: int  # first source frame used
+    audio_index: int  # absolute ffmpeg stream index, -1 if none
+    fullscreen: bool  # picture shown untransformed, covering the tracks below
 
 
 @dataclass
 class Track:
     name: str
     audio: bool
-    hidden: bool       # video hidden / audio muted
+    hidden: bool  # video hidden / audio muted
     entries: list[Entry]
 
 
 @dataclass
 class Project:
     tree: ET.ElementTree
-    seq: ET.Element    # the sequence tractor being edited
+    seq: ET.Element  # the sequence tractor being edited
     fps: float
-    rate: Fraction     # fps exactly (60000/1001), for the encoder
+    rate: Fraction  # fps exactly (60000/1001), for the encoder
     width: int
     height: int
-    length: int        # frames
+    length: int  # frames
     tracks: list[Track]
 
     @property
@@ -111,8 +118,10 @@ def load(path: Path) -> Project:
     try:
         return _read(path, tree)
     except (KeyError, ValueError, TypeError, AttributeError, ZeroDivisionError) as e:
-        die(f"{path.name}: unexpected project structure ({type(e).__name__}: {e}); "
-            "is it a Kdenlive project saved by a recent Kdenlive?")
+        die(
+            f"{path.name}: unexpected project structure ({type(e).__name__}: {e}); "
+            "is it a Kdenlive project saved by a recent Kdenlive?"
+        )
 
 
 def _read(path: Path, tree: ET.ElementTree) -> Project:
@@ -127,15 +136,20 @@ def _read(path: Path, tree: ET.ElementTree) -> Project:
     bin_props = props(byid["main_bin"]) if "main_bin" in byid else {}
     version = bin_props.get("kdenlive:docproperties.version")
     if version not in SUPPORTED_VERSIONS:
-        die(f"{path.name}: Kdenlive document version {version!r} is not supported "
+        die(
+            f"{path.name}: Kdenlive document version {version!r} is not supported "
             f"(known: {', '.join(sorted(SUPPORTED_VERSIONS))}); open and re-save it "
-            "in a current Kdenlive")
+            "in a current Kdenlive"
+        )
 
-    seqs = [t for t in root.iter("tractor")
-            if "kdenlive:sequenceproperties.tracksCount" in props(t)]
+    seqs = [
+        t for t in root.iter("tractor") if "kdenlive:sequenceproperties.tracksCount" in props(t)
+    ]
     active = bin_props.get("kdenlive:docproperties.activetimeline")
-    seq = next((t for t in seqs if props(t).get("kdenlive:uuid") == active),
-               seqs[0] if len(seqs) == 1 else None)
+    seq = next(
+        (t for t in seqs if props(t).get("kdenlive:uuid") == active),
+        seqs[0] if len(seqs) == 1 else None,
+    )
     if seq is None:
         die(f"{path.name}: cannot tell which timeline sequence to use")
 
@@ -152,7 +166,7 @@ def _read(path: Path, tree: ET.ElementTree) -> Project:
     for ref in seq.findall("track"):
         t = byid.get(ref.get("producer"))
         if t is None or t.tag != "tractor":
-            continue                          # the black background track
+            continue  # the black background track
         p = props(t)
         subs = t.findall("track")
         entries = []
@@ -165,28 +179,56 @@ def _read(path: Path, tree: ET.ElementTree) -> Project:
                     a, b = frames(c.get("in"), fps), frames(c.get("out"), fps)
                     src = byid.get(c.get("producer"))
                     sp = props(src) if src is not None else {}
-                    moved = any(props(f).get("mlt_service") in TRANSFORMS
-                                for f in c.findall("filter"))
-                    fullscreen = (sp.get("mlt_service") in PICTURES and not moved
-                                  and sp.get("video_index") != "-1")
-                    entries.append(Entry(pos, b - a + 1, resolve(sp.get("resource", "")), a,
-                                         int(sp.get("audio_index") or -1), fullscreen))
+                    moved = any(
+                        props(f).get("mlt_service") in TRANSFORMS for f in c.findall("filter")
+                    )
+                    fullscreen = (
+                        sp.get("mlt_service") in PICTURES
+                        and not moved
+                        and sp.get("video_index") != "-1"
+                    )
+                    entries.append(
+                        Entry(
+                            pos,
+                            b - a + 1,
+                            resolve(sp.get("resource", "")),
+                            a,
+                            int(sp.get("audio_index") or -1),
+                            fullscreen,
+                        )
+                    )
                     pos += b - a + 1
-        tracks.append(Track(p.get("kdenlive:track_name", ""),
-                            p.get("kdenlive:audio_track") == "1",
-                            bool(subs) and subs[0].get("hide") == "both", entries))
-    return Project(tree, seq, fps, rate, int(prof.get("width")), int(prof.get("height")),
-                   frames(seq.get("out"), fps) + 1, tracks)
+        tracks.append(
+            Track(
+                p.get("kdenlive:track_name", ""),
+                p.get("kdenlive:audio_track") == "1",
+                bool(subs) and subs[0].get("hide") == "both",
+                entries,
+            )
+        )
+    return Project(
+        tree,
+        seq,
+        fps,
+        rate,
+        int(prof.get("width")),
+        int(prof.get("height")),
+        frames(seq.get("out"), fps) + 1,
+        tracks,
+    )
 
 
 # --------------------------------------------------------------------------
 # What is on screen, and whose voice is where
 # --------------------------------------------------------------------------
 
+
 def player_of(resource: str, players: tuple[Player, ...]) -> int | None:
     name = Path(resource).name
-    return next((i for i, p in enumerate(players)
-                 if any(fnmatch.fnmatch(name, pat) for pat in p.source)), None)
+    return next(
+        (i for i, p in enumerate(players) if any(fnmatch.fnmatch(name, pat) for pat in p.source)),
+        None,
+    )
 
 
 def with_sources(project: Project, players: tuple[Player, ...]) -> tuple[Player, ...]:
@@ -197,8 +239,10 @@ def with_sources(project: Project, players: tuple[Player, ...]) -> tuple[Player,
         if not p.source:
             files = sorted({Path(e.resource).name for e in voice_entries(project, p)})
             if not files:
-                die(f"{p.name}: the {p.voice_track!r} track has no clips to take the "
-                    "video source from; set source in the theme")
+                die(
+                    f"{p.name}: the {p.voice_track!r} track has no clips to take the "
+                    "video source from; set source in the theme"
+                )
             p = replace(p, source=tuple(files))
         out.append(p)
     return tuple(out)
@@ -215,13 +259,13 @@ def view_map(project: Project, players: tuple[Player, ...]) -> np.ndarray:
     hide the view only when shown full-screen (an intro video, an outro card);
     placed ones (namecards, picture-in-picture) and titles are ignored."""
     view = np.full(project.length, -1, np.int16)
-    for t in project.tracks:                  # ascending index = bottom to top
+    for t in project.tracks:  # ascending index = bottom to top
         if t.audio or t.hidden or t.name in (TRACK_NAME, OLD_TRACK_NAME):
             continue
         for e in t.entries:
             who = player_of(e.resource, players)
             if who is not None or e.fullscreen:
-                view[e.start:e.start + e.length] = -1 if who is None else who
+                view[e.start : e.start + e.length] = -1 if who is None else who
     return view
 
 
@@ -230,7 +274,7 @@ def view_spans(view: np.ndarray, min_len: int) -> list[tuple[int, int, int]]:
     gaps between clips, slivers before an intro) are absorbed into the run
     before them."""
     edges = (np.flatnonzero(np.diff(view)) + 1).tolist()
-    spans = [(0, 0, -1)]   # a leading "no view" run absorbs a short first run
+    spans = [(0, 0, -1)]  # a leading "no view" run absorbs a short first run
     for s, e in zip([0, *edges], [*edges, len(view)], strict=True):
         who = int(view[s])
         if e - s < min_len or spans[-1][2] == who:
@@ -256,12 +300,16 @@ def bookends(length: int, fps: float) -> dict[str, tuple[int, int, int]]:
     """Where the intro and outro go: key -> (timeline frame, first source frame, frames).
     The positions the crew placed them at by hand in every episode up to 228: the intro
     from the top (its video half a second in), the outro ending with the project."""
+
     def f(seconds):
         return round(seconds * fps)
-    return {"intro_audio": (0, f(1.467), f(18.05)),
-            "intro_video": (f(0.583), 0, f(6.0)),
-            "outro_audio": (length - f(37.367), f(1.717), f(37.367)),
-            "outro_image": (length - f(20.183), 0, f(20.0))}
+
+    return {
+        "intro_audio": (0, f(1.467), f(18.05)),
+        "intro_video": (f(0.583), 0, f(6.0)),
+        "outro_audio": (length - f(37.367), f(1.717), f(37.367)),
+        "outro_image": (length - f(20.183), 0, f(20.0)),
+    }
 
 
 def voice_entries(project: Project, player: Player) -> list[Entry]:
@@ -269,16 +317,20 @@ def voice_entries(project: Project, player: Player) -> list[Entry]:
         if t.audio and t.name in (player.voice_track, f"{player.voice_track} Voice"):
             return [e for e in t.entries if e.audio_index >= 0]
     names = sorted({t.name for t in project.tracks if t.audio and t.name})
-    die(f"{player.name}: no audio track named {player.voice_track!r} "
-        f"(the project has: {', '.join(names)}); set voice_track in the theme")
+    die(
+        f"{player.name}: no audio track named {player.voice_track!r} "
+        f"(the project has: {', '.join(names)}); set voice_track in the theme"
+    )
 
 
 # --------------------------------------------------------------------------
 # Patching
 # --------------------------------------------------------------------------
 
-def _ensure_clip(project: Project, key: str, resource: Path, length: int,
-                 audio: bool, image: bool = False) -> tuple[str, str]:
+
+def _ensure_clip(
+    project: Project, key: str, resource: Path, length: int, audio: bool, image: bool = False
+) -> tuple[str, str]:
     """Bin clip + timeline instance for one of our media files, created on first
     run and refreshed in place afterwards (so any copy of it the editor placed
     elsewhere keeps working). Found by clip name and bin membership, never by
@@ -289,40 +341,70 @@ def _ensure_clip(project: Project, key: str, resource: Path, length: int,
     root, main_bin = project.root, project.byid()["main_bin"]
     clipname = f"{CLIP_PREFIX} {key.replace('_', ' ')}"
     media = [e for e in root if e.tag in ("chain", "producer")]
-    kid = next((props(e)["kdenlive:id"] for e in media
-                if props(e).get("kdenlive:clipname") == clipname
-                and props(e).get("kdenlive:id")), None)
-    if kid is None:   # sequences (tractors) carry bin ids too
+    kid = next(
+        (
+            props(e)["kdenlive:id"]
+            for e in media
+            if props(e).get("kdenlive:clipname") == clipname and props(e).get("kdenlive:id")
+        ),
+        None,
+    )
+    if kid is None:  # sequences (tractors) carry bin ids too
         taken = (props(e).get("kdenlive:id", "") for e in root)
         kid = str(1 + max((int(k) for k in taken if k.isdigit()), default=0))
         _new_chain(project, f"kuliss_speaker_{key}_bin", kid, tag)
         ET.SubElement(main_bin, "entry", producer=f"kuliss_speaker_{key}_bin")
     in_bin = {en.get("producer") for en in main_bin.findall("entry")}
-    copies = [e for e in root if e.tag in ("chain", "producer")
-              and props(e).get("kdenlive:id") == kid]
+    copies = [
+        e for e in root if e.tag in ("chain", "producer") and props(e).get("kdenlive:id") == kid
+    ]
     if not image and all(e.get("id") in in_bin for e in copies):
         copies.append(_new_chain(project, f"kuliss_speaker_{key}", kid))
 
     fields = {
-        "length": length, "eof": "pause", "resource": str(resource),
-        "mlt_service": "avformat-novalidate", "seekable": 1,
-        "audio_index": 0 if audio else -1, "video_index": -1 if audio else 0,
-        "kdenlive:clipname": clipname, "kdenlive:clip_type": 1 if audio else 2,
+        "length": length,
+        "eof": "pause",
+        "resource": str(resource),
+        "mlt_service": "avformat-novalidate",
+        "seekable": 1,
+        "audio_index": 0 if audio else -1,
+        "video_index": -1 if audio else 0,
+        "kdenlive:clipname": clipname,
+        "kdenlive:clip_type": 1 if audio else 2,
     }
     if image:
-        fields = {"length": length, "eof": "pause", "resource": str(resource), "ttl": 25,
-                  "aspect_ratio": 1, "seekable": 1, "mlt_service": "qimage",
-                  "kdenlive:clipname": clipname, "kdenlive:clip_type": 2}
-    control = next((props(e)["kdenlive:control_uuid"] for e in copies
-                    if props(e).get("kdenlive:control_uuid")), f"{{{uuid.uuid4()}}}")
+        fields = {
+            "length": length,
+            "eof": "pause",
+            "resource": str(resource),
+            "ttl": 25,
+            "aspect_ratio": 1,
+            "seekable": 1,
+            "mlt_service": "qimage",
+            "kdenlive:clipname": clipname,
+            "kdenlive:clip_type": 2,
+        }
+    control = next(
+        (
+            props(e)["kdenlive:control_uuid"]
+            for e in copies
+            if props(e).get("kdenlive:control_uuid")
+        ),
+        f"{{{uuid.uuid4()}}}",
+    )
     timeline_id = None
     for e in copies:
         kept = {k: v for k, v in props(e).items() if k in EDITOR_PROPS}
-        for p in e.findall("property"):   # drop stale probe data (hash, meta.*)
+        for p in e.findall("property"):  # drop stale probe data (hash, meta.*)
             e.remove(p)
         e.set("out", str(length - 1))
-        for k, v in {"kdenlive:id": kid, "kdenlive:control_uuid": control, **fields,
-                     "kdenlive:folderid": -1, **kept}.items():
+        for k, v in {
+            "kdenlive:id": kid,
+            "kdenlive:control_uuid": control,
+            **fields,
+            "kdenlive:folderid": -1,
+            **kept,
+        }.items():
             set_prop(e, k, v)
         if image:
             timeline_id = e.get("id")
@@ -358,9 +440,15 @@ def _shift_tracks(seq: ET.Element, k: int) -> None:
     p = props(seq)
     groups = p.get("kdenlive:sequenceproperties.groups")
     if groups:
-        set_prop(seq, "kdenlive:sequenceproperties.groups", re.sub(
-            r'("data":\s*")(\d+)(:)',
-            lambda m: f"{m[1]}{int(m[2]) + (int(m[2]) >= k - 1)}{m[3]}", groups))
+        set_prop(
+            seq,
+            "kdenlive:sequenceproperties.groups",
+            re.sub(
+                r'("data":\s*")(\d+)(:)',
+                lambda m: f"{m[1]}{int(m[2]) + (int(m[2]) >= k - 1)}{m[3]}",
+                groups,
+            ),
+        )
     for key in ("activeTrack", "audioTarget", "videoTarget"):
         v = p.get(f"kdenlive:sequenceproperties.{key}", "")
         if v.isdigit() and int(v) >= k - 1:
@@ -376,35 +464,71 @@ def _find_track(project: Project, name: str, audio: bool) -> ET.Element | None:
     names = (name, OLD_TRACK_NAME) if name == TRACK_NAME else (name,)
     for ref in project.seq.findall("track"):
         t = byid.get(ref.get("producer"))
-        if (t is not None and t.tag == "tractor"
-                and props(t).get("kdenlive:track_name") in names
-                and (props(t).get("kdenlive:audio_track") == "1") == audio):
+        if (
+            t is not None
+            and t.tag == "tractor"
+            and props(t).get("kdenlive:track_name") in names
+            and (props(t).get("kdenlive:audio_track") == "1") == audio
+        ):
             return t
     return None
 
 
 def _volume(level, **extra) -> dict:
     """A volume filter's properties, in the order Kdenlive writes them."""
-    return {"window": 75, "max_gain": "20dB", "level": level, "channel_mask": -1,
-            "mlt_service": "volume", **extra}
+    return {
+        "window": 75,
+        "max_gain": "20dB",
+        "level": level,
+        "channel_mask": -1,
+        "mlt_service": "volume",
+        **extra,
+    }
 
 
 def _mix(tractor: ET.Element, base: str, m: Mixer) -> None:
     """A track's (or the master's) mixer, as Kdenlive writes it."""
-    filters = [("contrast", {"mlt_service": "avfilter.acontrast", "kdenlive_id": "avfilter.acontrast",
-                             "av.contrast": m.contrast})] if m.contrast else []
-    filters += [("volume", _volume(m.gain, internal_added=237, disable=0)),
-                ("panner", {"channel": -1, "mlt_service": "panner", "internal_added": 237,
-                            "start": m.pan, "disable": int(m.pan == 0.5)})]
+    filters = (
+        [
+            (
+                "contrast",
+                {
+                    "mlt_service": "avfilter.acontrast",
+                    "kdenlive_id": "avfilter.acontrast",
+                    "av.contrast": m.contrast,
+                },
+            )
+        ]
+        if m.contrast
+        else []
+    )
+    filters += [
+        ("volume", _volume(m.gain, internal_added=237, disable=0)),
+        (
+            "panner",
+            {
+                "channel": -1,
+                "mlt_service": "panner",
+                "internal_added": 237,
+                "start": m.pan,
+                "disable": int(m.pan == 0.5),
+            },
+        ),
+    ]
     for key, fields in filters:
         f = ET.SubElement(tractor, "filter", id=f"{base}_{key}")
         for k, v in fields.items():
             set_prop(f, k, v)
 
 
-def ensure_track(project: Project, audio: bool, name: str = TRACK_NAME,
-                  base: str | None = None, under: str | None = None,
-                  mixer: Mixer | None = None) -> ET.Element:
+def ensure_track(
+    project: Project,
+    audio: bool,
+    name: str = TRACK_NAME,
+    base: str | None = None,
+    under: str | None = None,
+    mixer: Mixer | None = None,
+) -> ET.Element:
     """The named track's first playlist, emptied; the track is created if missing.
     Our audio tracks go below all others; any other new audio track on top of the
     audio tracks; a new video track on top, or right under the video track named `under`.
@@ -433,12 +557,11 @@ def ensure_track(project: Project, audio: bool, name: str = TRACK_NAME,
         pl = ET.Element("playlist", id=f"{base}_pl{n}")
         if audio:
             set_prop(pl, "kdenlive:audio_track", 1)
-        ET.SubElement(tractor, "track", producer=pl.get("id"),
-                      hide="video" if audio else "audio")
+        ET.SubElement(tractor, "track", producer=pl.get("id"), hide="video" if audio else "audio")
         pls.append(pl)
     if audio and name in (TRACK_NAME, ASSETS_OURS):
         mixer = Mixer(SOUND_LEVEL)
-    if audio and mixer:   # set only now: the editor's later changes stay
+    if audio and mixer:  # set only now: the editor's later changes stay
         _mix(tractor, base, mixer)
     at = list(project.root).index(seq)
     for n, el in enumerate([*pls, tractor]):
@@ -448,25 +571,48 @@ def ensure_track(project: Project, audio: bool, name: str = TRACK_NAME,
     if audio and name in (TRACK_NAME, ASSETS_OURS):
         k = 1
     elif audio:
-        audio_refs = [r for r in refs if props(byid.get(r.get("producer"), ET.Element("x")))
-                      .get("kdenlive:audio_track") == "1"]
+        audio_refs = [
+            r
+            for r in refs
+            if props(byid.get(r.get("producer"), ET.Element("x"))).get("kdenlive:audio_track")
+            == "1"
+        ]
         k = refs.index(audio_refs[-1]) + 1 if audio_refs else 1
     else:
-        k = next((i for i, r in enumerate(refs)
-                  if under and (t := byid.get(r.get("producer"))) is not None
-                  and props(t).get("kdenlive:track_name") == under
-                  and props(t).get("kdenlive:audio_track") != "1"), len(refs))
+        k = next(
+            (
+                i
+                for i, r in enumerate(refs)
+                if under
+                and (t := byid.get(r.get("producer"))) is not None
+                and props(t).get("kdenlive:track_name") == under
+                and props(t).get("kdenlive:audio_track") != "1"
+            ),
+            len(refs),
+        )
     _shift_tracks(seq, k)
     children = list(seq)
     seq.insert(children.index(refs[k - 1]) + 1, ET.Element("track", producer=base))
 
     tr = ET.Element("transition", id=f"{base}_transition")
-    fields = ({"mlt_service": "mix", "kdenlive_id": "mix", "accepts_blanks": 1, "sum": 1}
-              if audio else
-              {"mlt_service": "qtblend", "kdenlive_id": "qtblend", "compositing": 0,
-               "distort": 0, "rotate_center": 0})
-    for key, v in {"a_track": 0, "b_track": k, **fields,
-                   "internal_added": 237, "always_active": 1}.items():
+    fields = (
+        {"mlt_service": "mix", "kdenlive_id": "mix", "accepts_blanks": 1, "sum": 1}
+        if audio
+        else {
+            "mlt_service": "qtblend",
+            "kdenlive_id": "qtblend",
+            "compositing": 0,
+            "distort": 0,
+            "rotate_center": 0,
+        }
+    )
+    for key, v in {
+        "a_track": 0,
+        "b_track": k,
+        **fields,
+        "internal_added": 237,
+        "always_active": 1,
+    }.items():
         set_prop(tr, key, v)
     trs = seq.findall("transition")
     before = next((t for t in trs if int(props(t).get("b_track", 0)) > k), None)
@@ -487,7 +633,7 @@ def _moved_placement(project: Project) -> ET.Element | None:
             if p.get("mlt_service") != "qtblend" or PLACED not in p:
                 continue
             rect = p.get("rect", "")
-            try:   # Kdenlive rewrites "0=x y w h 1.0" as "00:00:00.000=x y w h 1"; compare numbers
+            try:  # Kdenlive rewrites "0=x y w h 1.0" as "00:00:00.000=x y w h 1"; compare numbers
                 now = [float(v) for v in rect.split("=")[-1].split()[:4]]
                 same = ";" not in rect and now == [float(v) for v in p[PLACED].split()]
             except ValueError:
@@ -503,11 +649,16 @@ def _assets_track(project: Project, audio: bool) -> str:
     if t is None or _find_track(project, ASSETS_OURS, audio) is not None:
         return ASSETS_OURS
     byid = project.byid()
-    ours = {props(e).get("kdenlive:id") for e in project.root
-            if props(e).get("kdenlive:clipname", "").startswith(CLIP_PREFIX)}
-    used = {props(byid[en.get("producer")]).get("kdenlive:id") if en.get("producer") in byid
-            else None for sub in t.findall("track")
-            for en in byid[sub.get("producer")].findall("entry")}
+    ours = {
+        props(e).get("kdenlive:id")
+        for e in project.root
+        if props(e).get("kdenlive:clipname", "").startswith(CLIP_PREFIX)
+    }
+    used = {
+        props(byid[en.get("producer")]).get("kdenlive:id") if en.get("producer") in byid else None
+        for sub in t.findall("track")
+        for en in byid[sub.get("producer")].findall("entry")
+    }
     return ASSETS if used <= ours else ASSETS_OURS
 
 
@@ -523,22 +674,29 @@ def _bookends(project: Project, media: dict[str, tuple[Path, int]], duck_at: flo
         keys = [k for k in spots if k in media and k.endswith("audio") == audio]
         if not keys:
             continue
-        clips = {k: _ensure_clip(project, k, *media[k], audio=audio,
-                                 image=k.endswith("image")) for k in keys}
-        pl = ensure_track(project, audio, _assets_track(project, audio),
-                           "kuliss_assets_audio" if audio else "kuliss_assets_video",
-                           under=TRACK_NAME)
+        clips = {
+            k: _ensure_clip(project, k, *media[k], audio=audio, image=k.endswith("image"))
+            for k in keys
+        }
+        pl = ensure_track(
+            project,
+            audio,
+            _assets_track(project, audio),
+            "kuliss_assets_audio" if audio else "kuliss_assets_video",
+            under=TRACK_NAME,
+        )
         pos = 0
         for k in keys:
             start, src_in, n = spots[k]
             n = min(n, media[k][1] - src_in)
-            if start < pos or n <= 0:   # a project too short to hold both
+            if start < pos or n <= 0:  # a project too short to hold both
                 continue
             if start > pos:
                 ET.SubElement(pl, "blank", length=str(start - pos))
             kid, prod = clips[k]
-            en = ET.SubElement(pl, "entry", {"producer": prod, "in": str(src_in),
-                                             "out": str(src_in + n - 1)})
+            en = ET.SubElement(
+                pl, "entry", {"producer": prod, "in": str(src_in), "out": str(src_in + n - 1)}
+            )
             set_prop(en, "kdenlive:id", kid)
             if k in LEVELS:
                 flt = ET.SubElement(en, "filter", id=f"kuliss_speaker_{k}_level")
@@ -547,26 +705,39 @@ def _bookends(project: Project, media: dict[str, tuple[Path, int]], duck_at: flo
                     set_prop(flt, key, v)
             if k.endswith("image"):
                 a, b = round(FADE_IN * fps), round(FADE_OUT * fps)
-                for kind, span, alpha in (("fade_from_black", {"out": str(a)}, "0=0;-1=1"),
-                                          ("fade_to_black", {"in": str(n - 1 - b),
-                                                             "out": str(n - 1)}, "0=1;-1=0")):
+                for kind, span, alpha in (
+                    ("fade_from_black", {"out": str(a)}, "0=0;-1=1"),
+                    ("fade_to_black", {"in": str(n - 1 - b), "out": str(n - 1)}, "0=1;-1=0"),
+                ):
                     flt = ET.SubElement(en, "filter", {"id": f"kuliss_speaker_{k}_{kind}", **span})
-                    for key, v in {"start": 1, "level": 1, "mlt_service": "brightness",
-                                   "kdenlive_id": kind, "alpha": alpha}.items():
+                    for key, v in {
+                        "start": 1,
+                        "level": 1,
+                        "mlt_service": "brightness",
+                        "kdenlive_id": kind,
+                        "alpha": alpha,
+                    }.items():
                         set_prop(flt, key, v)
             pos = start + n
 
 
-def patch(project: Project, overlay: Path, rect: tuple[int, int, int, int],
-          sound: Path, sound_len: int, cut_frames: list[int],
-          media: dict[str, tuple[Path, int]] | None = None, duck_at: float = DUCK_AT) -> None:
+def patch(
+    project: Project,
+    overlay: Path,
+    rect: tuple[int, int, int, int],
+    sound: Path,
+    sound_len: int,
+    cut_frames: list[int],
+    media: dict[str, tuple[Path, int]] | None = None,
+    duck_at: float = DUCK_AT,
+) -> None:
     """Put the overlay (full length, placed at rect) and one sound per cut on our tracks,
     and the intro and outro in `media` on the Assets tracks."""
     L = project.length
     vid, vprod = _ensure_clip(project, "overlay", overlay, L, audio=False)
     aid, aprod = _ensure_clip(project, "sound", sound, sound_len, audio=True)
 
-    moved = _moved_placement(project)   # before the track is emptied
+    moved = _moved_placement(project)  # before the track is emptied
     vpl = ensure_track(project, audio=False)
     en = ET.SubElement(vpl, "entry", {"producer": vprod, "in": "0", "out": str(L - 1)})
     set_prop(en, "kdenlive:id", vid)
@@ -575,9 +746,16 @@ def patch(project: Project, overlay: Path, rect: tuple[int, int, int, int],
     else:
         f = ET.SubElement(en, "filter", id="kuliss_speaker_placement")
         x, y, w, h = rect
-        for k, v in {"rotate_center": 1, "mlt_service": "qtblend", "kdenlive_id": "qtblend",
-                     "compositing": 0, "distort": 0, "rect": f"0={x} {y} {w} {h} 1.000000",
-                     "rotation": "0=0", PLACED: f"{x} {y} {w} {h}"}.items():
+        for k, v in {
+            "rotate_center": 1,
+            "mlt_service": "qtblend",
+            "kdenlive_id": "qtblend",
+            "compositing": 0,
+            "distort": 0,
+            "rect": f"0={x} {y} {w} {h} 1.000000",
+            "rotation": "0=0",
+            PLACED: f"{x} {y} {w} {h}",
+        }.items():
             set_prop(f, k, v)
 
     apl = ensure_track(project, audio=True)
@@ -615,9 +793,11 @@ def write(project: Project, path: Path, mtime: int) -> Path:
 
 # An empty project with one sequence, as Kdenlive 26.08 saves one (cut down from the
 # crew's former template); Kdenlive fills in the rest on first save.
-PROFILE = ('description="HD 1080p 60 fps" width="1920" height="1080" progressive="1" '
-           'sample_aspect_num="1" sample_aspect_den="1" display_aspect_num="16" '
-           'display_aspect_den="9" frame_rate_num="60" frame_rate_den="1" colorspace="709"')
+PROFILE = (
+    'description="HD 1080p 60 fps" width="1920" height="1080" progressive="1" '
+    'sample_aspect_num="1" sample_aspect_den="1" display_aspect_num="16" '
+    'display_aspect_den="9" frame_rate_num="60" frame_rate_den="1" colorspace="709"'
+)
 SKELETON = """<?xml version='1.0' encoding='utf-8'?>
 <mlt LC_NUMERIC="C" producer="main_bin" version="7.41.0">
  <profile {profile}/>
@@ -668,8 +848,13 @@ SKELETON = """<?xml version='1.0' encoding='utf-8'?>
 
 def new_project(path: Path) -> Project:
     """An empty 1080p60 project, to be written to `path`; no tracks yet."""
-    tree = ET.ElementTree(ET.fromstring(SKELETON.format(
-        profile=PROFILE, uuid=f"{{{uuid.uuid4()}}}", docid=int(time.time() * 1000))))
+    tree = ET.ElementTree(
+        ET.fromstring(
+            SKELETON.format(
+                profile=PROFILE, uuid=f"{{{uuid.uuid4()}}}", docid=int(time.time() * 1000)
+            )
+        )
+    )
     tree.getroot().set("root", str(path.parent))
     return _read(path, tree)
 
@@ -689,8 +874,9 @@ def create_project(dest: Path, crew: Crew) -> None:
     write_atomic(dest, lambda tmp: save(proj, tmp))
 
 
-def add_source(project: Project, path: Path, length: int,
-               streams: list[int]) -> tuple[str, str, dict[int, str]]:
+def add_source(
+    project: Project, path: Path, length: int, streams: list[int]
+) -> tuple[str, str, dict[int, str]]:
     """A recording as Kdenlive keeps one: a bin clip, plus a timeline instance for its
     video and one per audio stream used. Returns (kdenlive:id, video producer id,
     {audio stream: producer id})."""
@@ -698,11 +884,19 @@ def add_source(project: Project, path: Path, length: int,
     # reuse the bin clip if that turns out to be annoying
     taken = (props(e).get("kdenlive:id", "") for e in project.root)
     kid = str(1 + max((int(k) for k in taken if k.isdigit()), default=0))
-    fields = {"length": length, "eof": "pause", "resource": str(path),
-              "mlt_service": "avformat-novalidate", "seekable": 1,
-              "audio_index": streams[0], "video_index": 0,
-              "kdenlive:clipname": path.name, "kdenlive:folderid": -1, "kdenlive:clip_type": 0,
-              "kdenlive:control_uuid": f"{{{uuid.uuid4()}}}"}
+    fields = {
+        "length": length,
+        "eof": "pause",
+        "resource": str(path),
+        "mlt_service": "avformat-novalidate",
+        "seekable": 1,
+        "audio_index": streams[0],
+        "video_index": 0,
+        "kdenlive:clipname": path.name,
+        "kdenlive:folderid": -1,
+        "kdenlive:clip_type": 0,
+        "kdenlive:control_uuid": f"{{{uuid.uuid4()}}}",
+    }
 
     def chain(cid, **extra):
         ch = _new_chain(project, cid, kid)
@@ -711,16 +905,21 @@ def add_source(project: Project, path: Path, length: int,
             set_prop(ch, k, v)
         return cid
 
-    ET.SubElement(project.byid()["main_bin"], "entry",
-                  {"producer": chain(f"kuliss_{kid}_bin"), "in": "0", "out": str(length - 1)})
+    ET.SubElement(
+        project.byid()["main_bin"],
+        "entry",
+        {"producer": chain(f"kuliss_{kid}_bin"), "in": "0", "out": str(length - 1)},
+    )
     video = chain(f"kuliss_{kid}_v", **{"set.test_audio": 1})
-    audio = {s: chain(f"kuliss_{kid}_a{s}", audio_index=s, **{"set.test_image": 1})
-             for s in streams}
+    audio = {
+        s: chain(f"kuliss_{kid}_a{s}", audio_index=s, **{"set.test_image": 1}) for s in streams
+    }
     return kid, video, audio
 
 
-def place(project: Project, track_name: str, audio: bool, producer: str, kid: str,
-          start: int, length: int) -> None:
+def place(
+    project: Project, track_name: str, audio: bool, producer: str, kid: str, start: int, length: int
+) -> None:
     """A whole clip at timeline frame `start` on the named (empty) track."""
     t = _find_track(project, track_name, audio)
     if t is None:
@@ -733,7 +932,7 @@ def place(project: Project, track_name: str, audio: bool, producer: str, kid: st
     en = ET.SubElement(pl, "entry", {"producer": producer, "in": "0", "out": str(length - 1)})
     set_prop(en, "kdenlive:id", kid)
     end = start + length
-    for tr in project.root.iter("tractor"):   # the sequence and project lengths
+    for tr in project.root.iter("tractor"):  # the sequence and project lengths
         if tr.get("out") is not None and frames(tr.get("out"), project.fps) < end - 1:
             tr.set("out", str(end - 1))
     project.length = max(project.length, end)

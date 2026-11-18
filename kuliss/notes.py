@@ -56,43 +56,44 @@ from .files import backup, write_atomic
 from .kdnotes import ORPHAN_SECTION, extract_project, ts_seconds
 from .mdoc import Block, find_block, insert_child, locate, new_block, parse_doc, render_doc
 
-EPISODE_PREFIX = 'avsnitt'
-BRYGG_SECTION = 'Bryggpromenader'
-CHAPTER_SECTION = 'Kapitel'
-STANDARD_SECTIONS = ['Noteworthy', ORPHAN_SECTION, BRYGG_SECTION, CHAPTER_SECTION]
-METADATA_FIELDS = ['Titel', 'Blurb (large)', 'Blurb (short)', 'Trailer']
-TALLY_NAMES = [('J', 'Joel'), ('R', 'Robin'), ('H', 'Henrik'), ('K', 'Kenneth')]
-CHAPTER_OPENING = 'Äventyret börjar!'
-BRYGG_PHRASE = 'tar en lång promenad på en kort brygga'
+EPISODE_PREFIX = "avsnitt"
+BRYGG_SECTION = "Bryggpromenader"
+CHAPTER_SECTION = "Kapitel"
+STANDARD_SECTIONS = ["Noteworthy", ORPHAN_SECTION, BRYGG_SECTION, CHAPTER_SECTION]
+METADATA_FIELDS = ["Titel", "Blurb (large)", "Blurb (short)", "Trailer"]
+TALLY_NAMES = [("J", "Joel"), ("R", "Robin"), ("H", "Henrik"), ("K", "Kenneth")]
+CHAPTER_OPENING = "Äventyret börjar!"
+BRYGG_PHRASE = "tar en lång promenad på en kort brygga"
 
 SOFTWARE_DEFAULTS = [
-    '* Prism Launcher 9.2',
-    '* Project Ozone 3 3.4.10',
-    '* Minecraft 1.12.2',
-    '* Resource packs',
-    '  * Faithful 32x',
-    '  * Faithful Mods - Project Ozone 3',
-    '  * Ozone Resources 3',
-    '* OBS 23.0.3',
+    "* Prism Launcher 9.2",
+    "* Project Ozone 3 3.4.10",
+    "* Minecraft 1.12.2",
+    "* Resource packs",
+    "  * Faithful 32x",
+    "  * Faithful Mods - Project Ozone 3",
+    "  * Ozone Resources 3",
+    "* OBS 23.0.3",
 ]
 
-_META_RE = re.compile(r'^\*\*(.+?):\*\*')
-_META_FILLED_RE = re.compile(r'^\*\*(.+?):\*\*\s*\S')
-_TALLY_LINE_RE = re.compile(r'^(Joel|Robin|Henrik|Kenneth)\s*:')
-_TALLY_TOKEN_RE = re.compile(r'\b([JRHK])\s*\+\s*(\d+)', re.IGNORECASE)
-_KDENLIVE_LINE_RE = re.compile(r'^\*\s+Kdenlive\b')
-_CHAPTER_LINE_RE = re.compile(r'^\d{2}:\d{2}(:\d{2})?\s')
+_META_RE = re.compile(r"^\*\*(.+?):\*\*")
+_META_FILLED_RE = re.compile(r"^\*\*(.+?):\*\*\s*\S")
+_TALLY_LINE_RE = re.compile(r"^(Joel|Robin|Henrik|Kenneth)\s*:")
+_TALLY_TOKEN_RE = re.compile(r"\b([JRHK])\s*\+\s*(\d+)", re.IGNORECASE)
+_KDENLIVE_LINE_RE = re.compile(r"^\*\s+Kdenlive\b")
+_CHAPTER_LINE_RE = re.compile(r"^\d{2}:\d{2}(:\d{2})?\s")
 
 
 def _natural_key(name: str) -> list:
-    return [int(t) if t.isdigit() else t.lower() for t in re.split(r'(\d+)', name)]
+    return [int(t) if t.isdigit() else t.lower() for t in re.split(r"(\d+)", name)]
 
 
 # ── Skeleton repair ───────────────────────────────────────────────────────────
 
+
 def session_title(dirname: str) -> str:
-    m = re.match(r'^session_(\d+)_(.+)$', dirname)
-    return f'Session {m.group(1)} - {m.group(2)}' if m else dirname
+    m = re.match(r"^session_(\d+)_(.+)$", dirname)
+    return f"Session {m.group(1)} - {m.group(2)}" if m else dirname
 
 
 def ensure_skeleton(root: Block, title: str) -> tuple[Block, Block]:
@@ -102,15 +103,15 @@ def ensure_skeleton(root: Block, title: str) -> tuple[Block, Block]:
         h1 = new_block(1, title)
         insert_child(root, 0, h1)
 
-    software = find_block(root, 2, 'Mjukvaruversioner')
+    software = find_block(root, 2, "Mjukvaruversioner")
     if software is None:
-        software = new_block(2, 'Mjukvaruversioner')
+        software = new_block(2, "Mjukvaruversioner")
         software.lines = []
         insert_child(h1, 0, software)
 
-    info = find_block(root, 2, 'Avsnittsinfo')
+    info = find_block(root, 2, "Avsnittsinfo")
     if info is None:
-        info = new_block(2, 'Avsnittsinfo')
+        info = new_block(2, "Avsnittsinfo")
         parent, idx = locate(root, software)
         insert_child(parent, idx + 1, info)
 
@@ -121,8 +122,8 @@ def ensure_episode(root: Block, info: Block, name: str) -> Block:
     episode = find_block(root, 3, name)
     if episode is not None:
         return episode
-    episode = Block(3, name, f'### {name}\n')
-    episode.lines = ['\n'] + [f'**{f}:**\n' for f in METADATA_FIELDS] + ['\n']
+    episode = Block(3, name, f"### {name}\n")
+    episode.lines = ["\n"] + [f"**{f}:**\n" for f in METADATA_FIELDS] + ["\n"]
     pos = len(info.children)
     for i, child in enumerate(info.children):
         if child.level == 3 and _natural_key(child.title) > _natural_key(name):
@@ -136,10 +137,10 @@ def _ensure_metadata(episode: Block) -> None:
     # Normalize unbolded metadata lines ("Titel: x") to the bold form in place.
     for i, line in enumerate(episode.lines):
         for name in METADATA_FIELDS:
-            m = re.match(rf'^{re.escape(name)}\s*:\s*(.*?)\s*$', line)
+            m = re.match(rf"^{re.escape(name)}\s*:\s*(.*?)\s*$", line)
             if m:
                 value = m.group(1)
-                episode.lines[i] = f'**{name}:** {value}\n' if value else f'**{name}:**\n'
+                episode.lines[i] = f"**{name}:** {value}\n" if value else f"**{name}:**\n"
                 break
 
     present = set()
@@ -152,7 +153,7 @@ def _ensure_metadata(episode: Block) -> None:
     missing = [f for f in METADATA_FIELDS if f not in present]
     if not missing:
         return
-    insert = [f'**{f}:**\n' for f in missing]
+    insert = [f"**{f}:**\n" for f in missing]
     if last_meta is not None:
         pos = last_meta + 1
     else:
@@ -160,11 +161,11 @@ def _ensure_metadata(episode: Block) -> None:
         while pos < len(episode.lines) and not episode.lines[pos].strip():
             pos += 1
         if pos == 0:
-            insert = ['\n'] + insert
+            insert = ["\n"] + insert
     episode.lines[pos:pos] = insert
     end = pos + len(insert)
     if end >= len(episode.lines) or episode.lines[end].strip():
-        episode.lines.insert(end, '\n')
+        episode.lines.insert(end, "\n")
 
 
 def ensure_section(episode: Block, name: str) -> Block:
@@ -186,6 +187,7 @@ def ensure_section(episode: Block, name: str) -> Block:
 
 # ── Managed content updates ───────────────────────────────────────────────────
 
+
 def _tally(entries: list[tuple[str, str]]) -> list[tuple[str, int]]:
     by_initial = dict(TALLY_NAMES)
     counts = dict.fromkeys(by_initial.values(), 0)
@@ -197,25 +199,29 @@ def _tally(entries: list[tuple[str, str]]) -> list[tuple[str, int]]:
 
 def _bullet(entry: tuple[str, str]) -> str:
     ts, text = entry
-    return f'* {ts} {text}' if ts else f'* {text}'
+    return f"* {ts} {text}" if ts else f"* {text}"
 
 
-def _set_bullets(section: Block, bullets: list[str],
-                 tally: list[tuple[str, int]] | None = None,
-                 appendix: list[str] | None = None) -> None:
+def _set_bullets(
+    section: Block,
+    bullets: list[str],
+    tally: list[tuple[str, int]] | None = None,
+    appendix: list[str] | None = None,
+) -> None:
     """Replace the managed lines of a section, keeping hand-written extras."""
     extra = [
-        line for line in section.lines
-        if line.strip() and not line.startswith('* ') and not _TALLY_LINE_RE.match(line)
+        line
+        for line in section.lines
+        if line.strip() and not line.startswith("* ") and not _TALLY_LINE_RE.match(line)
     ]
-    lines = [f'{b}\n' for b in bullets]
+    lines = [f"{b}\n" for b in bullets]
     if appendix:
-        lines += ['\n'] + [f'{b}\n' for b in appendix]
+        lines += ["\n"] + [f"{b}\n" for b in appendix]
     if tally is not None:
-        lines += ['\n'] + [f'{name}: {count}\n' for name, count in tally]
+        lines += ["\n"] + [f"{name}: {count}\n" for name, count in tally]
     if extra:
-        lines += ['\n'] + extra
-    lines.append('\n')
+        lines += ["\n"] + extra
+    lines.append("\n")
     section.lines = lines
 
 
@@ -226,31 +232,29 @@ def _chapter_names(text: str) -> list[str]:
 
 
 def _chapters(
-    notes: dict[str, list[tuple[str, str]]], starred: list[tuple[str, str]],
+    notes: dict[str, list[tuple[str, str]]],
+    starred: list[tuple[str, str]],
 ) -> list[tuple[str, str]]:
     """Assemble the YouTube chapter list; empty when there are no real chapters."""
     items = []
     for ts, text in notes.get(BRYGG_SECTION, []):
         names = _chapter_names(text)
         if names and ts:
-            items.append((ts, f'{" och ".join(names)} {BRYGG_PHRASE}'))
+            items.append((ts, f"{' och '.join(names)} {BRYGG_PHRASE}"))
     items += [(ts, title) for ts, title in starred if ts]
     if not items:
         return []
-    items.append(('00:00', CHAPTER_OPENING))
+    items.append(("00:00", CHAPTER_OPENING))
     return sorted(items, key=lambda c: ts_seconds(c[0]))
 
 
 def _set_chapter_lines(section: Block, items: list[tuple[str, str]]) -> None:
     """Replace the managed chapter lines, keeping hand-written extras."""
-    extra = [
-        line for line in section.lines
-        if line.strip() and not _CHAPTER_LINE_RE.match(line)
-    ]
-    lines = [f'{ts} {title}\n' for ts, title in items]
+    extra = [line for line in section.lines if line.strip() and not _CHAPTER_LINE_RE.match(line)]
+    lines = [f"{ts} {title}\n" for ts, title in items]
     if extra:
-        lines += ['\n'] + extra
-    lines.append('\n')
+        lines += ["\n"] + extra
+    lines.append("\n")
     section.lines = lines
 
 
@@ -276,41 +280,42 @@ def _prune_orphan_section(episode: Block, incoming_bullets: set[str]) -> None:
 
 def _update_software(software: Block, version: str | None) -> None:
     if not any(line.strip() for line in software.lines):
-        software.lines = ['\n'] + [f'{line}\n' for line in SOFTWARE_DEFAULTS]
+        software.lines = ["\n"] + [f"{line}\n" for line in SOFTWARE_DEFAULTS]
         if version:
-            software.lines.append(f'* Kdenlive {version}\n')
-        software.lines.append('\n')
+            software.lines.append(f"* Kdenlive {version}\n")
+        software.lines.append("\n")
         return
     if not version:
         return
     for i, line in enumerate(software.lines):
         if _KDENLIVE_LINE_RE.match(line):
-            software.lines[i] = f'* Kdenlive {version}\n'
+            software.lines[i] = f"* Kdenlive {version}\n"
             return
     end = len(software.lines)
     while end and not software.lines[end - 1].strip():
         end -= 1
-    software.lines.insert(end, f'* Kdenlive {version}\n')
+    software.lines.insert(end, f"* Kdenlive {version}\n")
 
 
 # ── Session processing ────────────────────────────────────────────────────────
 
+
 def _locate_session_file(session_dir: Path) -> tuple[Path, str]:
     """Return (md_path, current_text); a session_*.txt is promoted on write."""
-    md = next(iter(sorted(session_dir.glob('session_*.md'))), None)
+    md = next(iter(sorted(session_dir.glob("session_*.md"))), None)
     if md:
-        return md, md.read_text(encoding='utf-8')
-    txt = next(iter(sorted(session_dir.glob('session_*.txt'))), None)
+        return md, md.read_text(encoding="utf-8")
+    txt = next(iter(sorted(session_dir.glob("session_*.txt"))), None)
     if txt:
-        return txt.with_suffix('.md'), txt.read_text(encoding='utf-8')
-    return session_dir / f'{session_dir.name}.md', ''
+        return txt.with_suffix(".md"), txt.read_text(encoding="utf-8")
+    return session_dir / f"{session_dir.name}.md", ""
 
 
 def show_episode(session_dir: Path, episode: str) -> str | None:
     """An episode's block from the session file, or None if it has none."""
     _, original = _locate_session_file(session_dir)
     block = find_block(parse_doc(original), 3, episode) if original else None
-    return None if block is None else render_doc(block).rstrip('\n')
+    return None if block is None else render_doc(block).rstrip("\n")
 
 
 @dataclass
@@ -319,12 +324,12 @@ class Check:
 
     name: str
     issues: list[str]
-    notes: str          # e.g. "Noteworthy 12, Kapitel 5"
+    notes: str  # e.g. "Noteworthy 12, Kapitel 5"
 
     def __str__(self) -> str:
         if self.issues:
-            return f'✗ {self.name}: {"; ".join(self.issues)}  [{self.notes}]'
-        return f'✓ {self.name}: ready  [{self.notes}]'
+            return f"✗ {self.name}: {'; '.join(self.issues)}  [{self.notes}]"
+        return f"✓ {self.name}: ready  [{self.notes}]"
 
 
 def checklist(root: Block, episode_names: list[str]) -> list[Check]:
@@ -333,29 +338,39 @@ def checklist(root: Block, episode_names: list[str]) -> list[Check]:
     for name in episode_names:
         episode = find_block(root, 3, name)
         if episode is None:
-            checks.append(Check(name, ['not in session file'], 'no notes yet'))
+            checks.append(Check(name, ["not in session file"], "no notes yet"))
             continue
         filled = {m.group(1) for line in episode.lines if (m := _META_FILLED_RE.match(line))}
         missing = [f for f in METADATA_FIELDS if f not in filled]
         issues = []
         if missing:
-            issues.append(f'fill in {", ".join(missing)}')
-        titel = next((m.group(1) for line in episode.lines
-                      if (m := re.match(r'^\*\*Titel:\*\*\s*(\S.*?)\s*$', line))), '')
+            issues.append(f"fill in {', '.join(missing)}")
+        titel = next(
+            (
+                m.group(1)
+                for line in episode.lines
+                if (m := re.match(r"^\*\*Titel:\*\*\s*(\S.*?)\s*$", line))
+            ),
+            "",
+        )
         if len(titel) > 100:
-            issues.append(f'Titel too long ({len(titel)}/100 chars)')
+            issues.append(f"Titel too long ({len(titel)}/100 chars)")
         counts = [
-            f'{c.title} {sum(1 for line in c.lines if line.startswith("* "))}'
+            f"{c.title} {sum(1 for line in c.lines if line.startswith('* '))}"
             for c in episode.children
-            if any(line.startswith('* ') for line in c.lines)
+            if any(line.startswith("* ") for line in c.lines)
         ]
-        chapter_count = sum(bool(_CHAPTER_LINE_RE.match(line)) for c in episode.children
-                            if c.title == CHAPTER_SECTION for line in c.lines)
+        chapter_count = sum(
+            bool(_CHAPTER_LINE_RE.match(line))
+            for c in episode.children
+            if c.title == CHAPTER_SECTION
+            for line in c.lines
+        )
         if chapter_count:
-            counts.append(f'{CHAPTER_SECTION} {chapter_count}')
+            counts.append(f"{CHAPTER_SECTION} {chapter_count}")
         if 0 < chapter_count < 3:
-            issues.append(f'only {chapter_count} chapters (YouTube needs 3+)')
-        checks.append(Check(name, issues, ', '.join(counts) if counts else 'no notes yet'))
+            issues.append(f"only {chapter_count} chapters (YouTube needs 3+)")
+        checks.append(Check(name, issues, ", ".join(counts) if counts else "no notes yet"))
     return checks
 
 
@@ -367,14 +382,16 @@ def episodes(session_dir: Path) -> tuple[list[tuple[str, Path]], list[str]]:
     for d in sorted(session_dir.iterdir(), key=lambda d: _natural_key(d.name)):
         if not (d.is_dir() and d.name.startswith(EPISODE_PREFIX)):
             continue
-        projects = [d / f'{d.name}.kdenlive']
+        projects = [d / f"{d.name}.kdenlive"]
         if not projects[0].exists():
-            projects = sorted(d.glob('*.kdenlive'))
+            projects = sorted(d.glob("*.kdenlive"))
         if len(projects) == 1:
             found.append((d.name, projects[0]))
         elif projects:
-            warnings.append(f'{d.name}: {len(projects)} .kdenlive files and none named '
-                            f'{d.name}.kdenlive; skipped')
+            warnings.append(
+                f"{d.name}: {len(projects)} .kdenlive files and none named "
+                f"{d.name}.kdenlive; skipped"
+            )
     return found, warnings
 
 
@@ -384,8 +401,8 @@ class SessionResult:
 
     session_dir: Path
     md: Path | None = None
-    original: str = ''
-    updated: str = ''
+    original: str = ""
+    updated: str = ""
     written: bool = False
     warnings: int = 0
     lines: list[str] = field(default_factory=list)
@@ -393,25 +410,25 @@ class SessionResult:
 
     def _warn(self, text: str) -> None:
         self.warnings += 1
-        self.lines.append(f'  {text}')
+        self.lines.append(f"  {text}")
 
 
 def process_session(session_dir: Path, dry_run: bool = False) -> SessionResult:
     """Merge one session's episode notes into its Markdown file (not written on dry_run)."""
     res = SessionResult(session_dir)
     say = res.lines.append
-    say(f'session: {session_dir.name}')
+    say(f"session: {session_dir.name}")
 
     found, skipped = episodes(session_dir)
     for text in skipped:
-        res._warn(f'WARNING - {text}')
+        res._warn(f"WARNING - {text}")
     if not found:
-        say('  no episode subdirectories found')
+        say("  no episode subdirectories found")
         return res
 
     md, original = _locate_session_file(session_dir)
-    if original and not original.endswith('\n'):
-        original += '\n'
+    if original and not original.endswith("\n"):
+        original += "\n"
 
     root = parse_doc(original)
     software, info = ensure_skeleton(root, session_title(session_dir.name))
@@ -422,13 +439,13 @@ def process_session(session_dir: Path, dry_run: bool = False) -> SessionResult:
     for name, project in found:
         episode = ensure_episode(root, info, name)
         _ensure_metadata(episode)
-        ensure_section(episode, 'Noteworthy')
+        ensure_section(episode, "Noteworthy")
         _prune_orphan_section(episode, set())
 
         try:
             notes, starred, version = extract_project(project)
         except (ET.ParseError, OSError) as exc:
-            res._warn(f'{name}: WARNING - could not read project file ({exc})')
+            res._warn(f"{name}: WARNING - could not read project file ({exc})")
             continue
         kdenlive_version = version or kdenlive_version
 
@@ -443,14 +460,14 @@ def process_session(session_dir: Path, dry_run: bool = False) -> SessionResult:
         if notes or orphans:
             # Naked bullets directly under the episode heading are leftovers
             # from the pre-section format; the structured sections replace them.
-            episode.lines = [line for line in episode.lines if not line.startswith('* ')]
+            episode.lines = [line for line in episode.lines if not line.startswith("* ")]
             if orphans:
-                notes.setdefault('Noteworthy', [])
+                notes.setdefault("Noteworthy", [])
             for section_name, entries in notes.items():
                 section = ensure_section(episode, section_name)
                 bullets = [_bullet(e) for e in entries]
                 appendix = None
-                if section_name == 'Noteworthy' and orphan_bullets:
+                if section_name == "Noteworthy" and orphan_bullets:
                     if bullets:
                         appendix = orphan_bullets
                     else:
@@ -461,13 +478,13 @@ def process_session(session_dir: Path, dry_run: bool = False) -> SessionResult:
                 _set_chapter_lines(ensure_section(episode, CHAPTER_SECTION), chapter_items)
             counts = {s: len(e) for s, e in notes.items()}
             if orphans:
-                counts['Noteworthy'] += len(orphans)
+                counts["Noteworthy"] += len(orphans)
             if chapter_items:
                 counts[CHAPTER_SECTION] = len(chapter_items)
-            summary = ', '.join(f'{s} ({n})' for s, n in counts.items())
-            say(f'  {name}: {summary}')
+            summary = ", ".join(f"{s} ({n})" for s, n in counts.items())
+            say(f"  {name}: {summary}")
         else:
-            say(f'  {name}: no notes')
+            say(f"  {name}: no notes")
 
     _update_software(software, kdenlive_version)
 
@@ -479,36 +496,37 @@ def process_session(session_dir: Path, dry_run: bool = False) -> SessionResult:
     updated = render_doc(root)
     res.md, res.original, res.updated = md, original, updated
     if updated == original:
-        say(f'  {md.name} already up to date')
+        say(f"  {md.name} already up to date")
     elif dry_run:
-        say(f'  dry run - {md.name} would be {"updated" if md.exists() else "created"}:')
+        say(f"  dry run - {md.name} would be {'updated' if md.exists() else 'created'}:")
         diff = difflib.unified_diff(
             original.splitlines(keepends=True),
             updated.splitlines(keepends=True),
-            fromfile=f'{md.name} (current)',
-            tofile=f'{md.name} (updated)',
+            fromfile=f"{md.name} (current)",
+            tofile=f"{md.name} (updated)",
         )
-        res.lines += ['    ' + line.rstrip('\n') for line in diff]
+        res.lines += ["    " + line.rstrip("\n") for line in diff]
     else:
         created = not md.exists()
-        note = '' if created else f' (previous version in {backup(md).name})'
-        write_atomic(md, lambda tmp: tmp.write_text(updated, encoding='utf-8'))
+        note = "" if created else f" (previous version in {backup(md).name})"
+        write_atomic(md, lambda tmp: tmp.write_text(updated, encoding="utf-8"))
         res.written = True
-        say(f'  {"created" if created else "updated"} {md.name}{note}')
+        say(f"  {'created' if created else 'updated'} {md.name}{note}")
 
     res.checklist = checklist(root, episode_names)
-    say('  checklist:')
-    res.lines += [f'    {check}' for check in res.checklist]
+    say("  checklist:")
+    res.lines += [f"    {check}" for check in res.checklist]
     return res
 
 
 # ── Discovery ─────────────────────────────────────────────────────────────────
 
+
 def is_session_dir(path: Path) -> bool:
     return (
-        path.name.startswith('session_')
-        or any(path.glob('session_*.md'))
-        or any(path.glob('session_*.txt'))
+        path.name.startswith("session_")
+        or any(path.glob("session_*.md"))
+        or any(path.glob("session_*.txt"))
     )
 
 
@@ -518,7 +536,6 @@ def discover(start: Path) -> list[Path]:
         if is_session_dir(candidate):
             return [candidate]
     return sorted(
-        (d for d in start.iterdir() if d.is_dir() and d.name.startswith('session_')),
+        (d for d in start.iterdir() if d.is_dir() and d.name.startswith("session_")),
         key=lambda d: _natural_key(d.name),
     )
-
