@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .config import CREW_FILE, load_crew, nearest_theme
 from .errors import VoiceError, die
+from .files import write_atomic
 from .mdoc import _parse, _render
 from .notes import (
     EPISODE_PREFIX,
@@ -15,7 +16,6 @@ from .notes import (
     _ensure_skeleton,
     _is_session_dir,
     _session_title,
-    _write_atomic,
 )
 from .timeline import create_project
 
@@ -61,7 +61,8 @@ def scaffold_session(root: Path, number: int, session_date: str,
     software.lines = ['\n'] + [f'{line}\n' for line in software_lines] + ['\n']
     block = _ensure_episode(doc, info, episode)
     _ensure_section(block, 'Noteworthy')
-    _write_atomic(session_dir / f'{name}.md', _render(doc))
+    text = _render(doc)
+    write_atomic(session_dir / f'{name}.md', lambda tmp: tmp.write_text(text, encoding='utf-8'))
 
     if nearest_theme(session_dir) is None:
         log.warning('no theme.toml in %s or above, so kuliss finish will not run; put the '

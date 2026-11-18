@@ -7,9 +7,7 @@ a re-run finds and reuses them instead of adding more.
 """
 
 import fnmatch
-import os
 import re
-import shutil
 import time
 import uuid
 import xml.etree.ElementTree as ET
@@ -21,6 +19,7 @@ import numpy as np
 
 from .config import Crew, Mixer, Player
 from .errors import die
+from .files import backup, write_atomic
 
 TRACK_NAME = "kuliss"
 OLD_TRACK_NAME = "kuliss speaker"   # until 2026-11-11; a re-run renames it
@@ -602,17 +601,9 @@ def write(project: Project, path: Path, mtime: int) -> Path:
     file changed since it was read (mtime from before load). Returns the backup."""
     if path.stat().st_mtime_ns != mtime:
         die(f"{path.name} was saved while we worked; run again")
-    backup = path.with_name(f"{path.name}.{time.strftime('%Y%m%d-%H%M%S')}.bak")
-    shutil.copy2(path, backup)
-    tmp = path.with_name(path.name + ".partial")
-    try:
-        save(project, tmp)
-        shutil.copymode(path, tmp)   # keep the project's permissions
-        os.replace(tmp, path)
-    except BaseException:
-        tmp.unlink(missing_ok=True)
-        raise
-    return backup
+    copy = backup(path)
+    write_atomic(path, lambda tmp: save(project, tmp))
+    return copy
 
 
 # --------------------------------------------------------------------------
@@ -692,13 +683,7 @@ def create_project(dest: Path, crew: Crew) -> None:
     _ensure_track(proj, True, ASSETS, "assets_audio", mixer=Mixer(crew.assets_gain))
     _ensure_track(proj, False, ASSETS, "assets_video")
     master(proj, Mixer(crew.master_gain))
-    tmp = dest.with_name(dest.name + ".partial")
-    try:
-        save(proj, tmp)
-        os.replace(tmp, dest)
-    except BaseException:
-        tmp.unlink(missing_ok=True)
-        raise
+    write_atomic(dest, lambda tmp: save(proj, tmp))
 
 
 def add_source(project: Project, path: Path, length: int,

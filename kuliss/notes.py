@@ -47,12 +47,12 @@ completeness checklist is printed after each run.
 """
 
 import difflib
-import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
+from .files import backup, write_atomic
 from .kdnotes import ORPHAN_SECTION, _extract_project, _ts_seconds
 from .mdoc import _Block, _find_block, _insert_child, _locate, _new_block, _parse, _render
 
@@ -306,12 +306,6 @@ def _locate_session_file(session_dir: Path) -> tuple[Path, str]:
     return session_dir / f'{session_dir.name}.md', ''
 
 
-def _write_atomic(path: Path, text: str) -> None:
-    tmp = path.with_name(path.name + '.tmp')
-    tmp.write_text(text, encoding='utf-8')
-    os.replace(tmp, path)
-
-
 def show_episode(session_dir: Path, episode: str) -> str | None:
     """An episode's block from the session file, or None if it has none."""
     _, original = _locate_session_file(session_dir)
@@ -497,11 +491,9 @@ def process_session(session_dir: Path, dry_run: bool = False) -> SessionResult:
         res.lines += ['    ' + line.rstrip('\n') for line in diff]
     else:
         created = not md.exists()
-        if not created:
-            _write_atomic(md.with_name(md.name + '.bak'), original)
-        _write_atomic(md, updated)
+        note = '' if created else f' (previous version in {backup(md).name})'
+        write_atomic(md, lambda tmp: tmp.write_text(updated, encoding='utf-8'))
         res.written = True
-        note = '' if created else ' (previous version in .bak)'
         say(f'  {"created" if created else "updated"} {md.name}{note}')
 
     res.checklist = checklist(root, episode_names)

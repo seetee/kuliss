@@ -347,7 +347,8 @@ disturb an edit in progress; clear the recordings' tracks to sync again. Like
 Safety details:
 
 * Before the session file is modified, the previous version is saved next to it
-  as `<name>.md.bak`, and the write itself is atomic (a crash can never leave a
+  as `<name>.md.YYYYmmdd-HHMMSS.bak` (one per changed run, so none is ever
+  overwritten by the next), and the write itself is atomic (a crash can never leave a
   half-written file).
 * The exit code is non-zero when any warning was printed (unreadable project
   file, or a `### avsnittXXX` section with no matching directory — e.g. after

@@ -455,9 +455,10 @@ class SafetyTests(unittest.TestCase):
             t.episode('avsnitt207', NOTEWORTHY)
             t.md.write_text(PARTIAL_MD, encoding='utf-8')
             t.run()
-            bak = t.dir / (t.md.name + '.bak')
+            (bak,) = t.dir.glob(t.md.name + '.*.bak')   # timestamped: a later run keeps it
             self.assertEqual(bak.read_text(encoding='utf-8'), PARTIAL_MD)
             t.run()  # no-op run must not touch the backup
+            self.assertEqual(list(t.dir.glob('*.bak')), [bak])
             self.assertEqual(bak.read_text(encoding='utf-8'), PARTIAL_MD)
 
     def test_no_backup_on_bootstrap(self):
@@ -465,7 +466,7 @@ class SafetyTests(unittest.TestCase):
             t = SessionTree(tmp)
             t.episode('avsnitt207', NOTEWORTHY)
             t.run()
-            self.assertFalse((t.dir / (t.md.name + '.bak')).exists())
+            self.assertFalse(list(t.dir.glob('*.bak')))
 
     def test_dry_run_prints_diff_without_writing(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -476,7 +477,7 @@ class SafetyTests(unittest.TestCase):
             self.assertEqual(out, PARTIAL_MD)
             self.assertIn('dry run', t.stdout)
             self.assertIn('+#### Noteworthy', t.stdout)
-            self.assertFalse((t.dir / (t.md.name + '.bak')).exists())
+            self.assertFalse(list(t.dir.glob('*.bak')))
 
     def test_note_whitespace_collapsed_and_idempotent(self):
         with tempfile.TemporaryDirectory() as tmp:
