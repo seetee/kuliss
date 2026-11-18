@@ -19,7 +19,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .config import Mixer, Player
+from .config import Crew, Mixer, Player
 from .errors import die
 
 TRACK_NAME = "kuliss"
@@ -683,6 +683,22 @@ def new_project(path: Path) -> Project:
 def master(project: Project, m: Mixer) -> None:
     """The sequence's master volume."""
     _mix(project.seq, "sequence_master", m)
+
+
+def create_project(dest: Path, crew: Crew) -> None:
+    """A new, empty session project: the Assets tracks, which the intro and outro go
+    on (`kuliss finish`), and the crew's master volume. `kuliss sync` adds the rest."""
+    proj = new_project(dest)
+    _ensure_track(proj, True, ASSETS, "assets_audio", mixer=Mixer(crew.assets_gain))
+    _ensure_track(proj, False, ASSETS, "assets_video")
+    master(proj, Mixer(crew.master_gain))
+    tmp = dest.with_name(dest.name + ".partial")
+    try:
+        save(proj, tmp)
+        os.replace(tmp, dest)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 def add_source(project: Project, path: Path, length: int,

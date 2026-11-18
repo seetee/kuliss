@@ -85,7 +85,7 @@ def make_session(tmp_path):
     sdir = tmp_path / "session_1_2026-10-30"
     (sdir / "sources").mkdir(parents=True)
     project = sdir / f"{sdir.name}.kdenlive"
-    session.create_project(project, load_crew(tmp_path / CREW_FILE))
+    T.create_project(project, load_crew(tmp_path / CREW_FILE))
 
     j, k = bursts(120), bursts(120)           # Kenneth starts recording 12 s after Joel
     recording(sdir / "sources" / "2026-10-30_j.mkv", j[:9000], k[:9000], 90)

@@ -17,6 +17,7 @@ from .notes import (
     _session_title,
     _write_atomic,
 )
+from .timeline import create_project
 
 log = logging.getLogger(__name__)
 
@@ -67,7 +68,6 @@ def scaffold_session(root: Path, number: int, session_date: str,
                     "game's theme in %s (see theme.example.toml)", session_dir, root)
 
     project, warning = session_dir / f'{name}.kdenlive', None
-    from .session import create_project  # imported here: `kuliss new` stays light
     try:
         create_project(project, load_crew(root / CREW_FILE))
     except VoiceError as e:

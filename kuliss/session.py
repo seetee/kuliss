@@ -7,7 +7,6 @@ heard in the others' Comms streams, which is what lines the files up.
 
 import logging
 import math
-import os
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -17,7 +16,7 @@ from pathlib import Path
 import av
 
 from . import sync, timeline
-from .config import CREW_FILE, Crew, Mixer, load_crew
+from .config import CREW_FILE, Mixer, load_crew
 from .errors import die
 from .notes import TALLY_NAMES
 
@@ -51,22 +50,6 @@ class SyncResult:
     offsets: dict[str, tuple[float, float]]     # name -> (s after the reference, confidence)
     added_tracks: list[tuple[str, bool]] = field(default_factory=list)   # (name, audio?)
     seconds: float = 0.0                        # analysis time
-
-
-def create_project(dest: Path, crew: Crew) -> None:
-    """A new, empty session project: the Assets tracks, which the intro and outro go
-    on (`kuliss finish`), and the crew's master volume. `kuliss sync` adds the rest."""
-    proj = timeline.new_project(dest)
-    timeline._ensure_track(proj, True, timeline.ASSETS, "assets_audio", mixer=Mixer(crew.assets_gain))
-    timeline._ensure_track(proj, False, timeline.ASSETS, "assets_video")
-    timeline.master(proj, Mixer(crew.master_gain))
-    tmp = dest.with_name(dest.name + ".partial")
-    try:
-        timeline.save(proj, tmp)
-        os.replace(tmp, dest)
-    except BaseException:
-        tmp.unlink(missing_ok=True)
-        raise
 
 
 def probe(path: Path, fps: float) -> Recording | None:
