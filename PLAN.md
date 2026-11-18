@@ -1,49 +1,74 @@
 # Plan
 
-What is left after the full code edit of 2026-11-11 and the template removal of 2026-11-17 (API-first module split, notes episode
+What is left after the full code edit of 2026-11-11, the template removal of 2026-11-17 and the audit of 2026-11-18 (API-first module split, notes episode
 rule, detector tuning, overlay polish, lockfile and CI hardening).
 
-## Next up (state at close, 2026-11-17 evening)
+## Next up (state at close, 2026-11-18 evening)
 
-Done on 2026-11-17 (commits `aba99a3`, `6545dc4`, CI green): no session template any more
-(`kuliss new` builds the project, `kuliss sync` creates the players' tracks with the crew
-file's mixer and starts at 0); the real crew file is in `_assets/kuliss.toml`; one shared PO3
-`theme.toml` in the samkvam folder (with the intro/outro lines); `kuliss new` warns without a
-theme; `kuliss speaker` renamed `kuliss finish` (bin clip names kept). Still nothing of the
-intro/outro or the generated projects has been opened in the Kdenlive GUI.
+Done on 2026-11-18 (`5e80d84`..`04f0392`):
+- **Code audit and fixes.** The audit found the code healthy and secure. Fixes:
+  - `sync` refuses two recordings of one player.
+  - `new` no longer loads PyAV or Silero.
+  - Atomic writes and timestamped `.bak` files are shared by every command.
+  - Readable names, `ruff format`, CI actions pinned to SHAs.
+- **Assets tracks.** The intro, outro and switch sounds now go on the project's own
+  `Assets` tracks, beside the editor's clips. kuliss's clips never move the editor's;
+  one that would overlap them is left out with a warning.
+- **Overlay.** It follows only players' clips, so a green screen on `Assets` no longer
+  hides it.
+- **Theme.** New `show_view = false`: only who talks, with no switch sounds.
+- **README:**
+  - a Windows install section;
+  - "Making a theme", with every asset's format and size;
+  - the show folder standard, "Where files live" (`samkvam.online/` plus `_assets/`).
+- **Real files.** `samkvam.online/theme.toml` has the new comments; its settings are
+  unchanged.
 
-The evening routine: `kuliss new`, move the .mkv files to `sources/`, `kuliss sync`; rename
-`avsnittXX<nr>` to `avsnitt<nr>`, copy the project there as `avsnitt<nr>.kdenlive`, cut it
-to the episode starting at 0, edit; `kuliss notes`; `kuliss finish` (re-run after any change
-to the edit's length).
+Checked in the Kdenlive GUI on 2026-11-18:
+- Green screen and `Assets` placement on the avsnitt228 copy.
+- Deleting the emptied old tracks.
+- The moved overlay is kept.
+- A full render.
 
 For Kenneth, in this order:
 
-- [ ] Sessions 27 and 28 have their own `theme.toml` without the intro/outro lines, which
-      wins over the shared one there; delete them to use the shared theme.
-- [ ] Run `kuliss finish` on a copy of an episode with no hand-placed intro, outro or
-      swooshes; open it in Kdenlive. Check the first 10 s (intro video, music, the duck when
-      the voices start), the last 40 s (outro music rising, card fading in and out), the
-      swoosh volume against the voices, and the camera badge in motion.
-- [ ] Working order agreed: game video from 0, first words at about 5-6 s, edit ends where
-      the outro card should end with about 20 s of footage under it. Kuliss moves no clips.
-- [ ] avsnitt227 (real): delete the old `kuliss speaker` audio track, or restore
-      `avsnitt227.kdenlive.20261111-172920.bak`, and run again; a re-run renames the old
-      track but does not move it or set its volume. Its `Assets` track also still holds 24
-      hand-placed swooshes, so the swoosh plays twice until those are deleted.
+- [ ] **avsnitt227 (real).** Delete the 24 hand-placed swooshes on `Assets`, then run
+      `kuliss finish`. Listen for missing or doubled swooshes.
+- [ ] **`show_view = false`.** On a copy, run `--preview 30`. Check that all avatars are
+      the same size, there is no label, the talking marker works and there are no
+      swooshes. Then do a full run on a copy that already has swooshes and check that they
+      are gone.
+- [ ] **`kuliss new` + `kuliss sync`.** Use a scratch session with copied recordings and
+      open it in Kdenlive. Check that the clips are there, the sync by ear, the track order
+      and the mixer values (voice gain, pan, Audio contrast), and that Kdenlive saves it
+      without complaint.
+- [ ] **Overlap warning.** Put one of your own clips on `Assets` audio where a swoosh would
+      go and run again. Expect a warning ("switch sound at MM:SS"), the swoosh left out,
+      and your clip untouched.
+- [ ] **Windows.** Follow the README's "Install and run your first project on Windows"
+      exactly; note any step that fails or is unclear.
+- [ ] **Linux ↔ Windows** (only if projects travel). Open a project saved on the other
+      system and check that Kdenlive's missing-clips dialog finds everything when pointed at
+      the show folder.
+- [ ] **Theme from scratch.** Build one using only the README's "Making a theme"; anything
+      you had to guess is a gap in the docs.
+- [ ] `_assets/samkvam-session_template.kdenlive` can be deleted (no longer used).
 
-Decided 2026-11-17:
+The evening routine:
+1. `kuliss new`, move the .mkv files to `sources/`, `kuliss sync`.
+2. Rename `avsnittXX<nr>` to `avsnitt<nr>`, copy the project there as
+   `avsnitt<nr>.kdenlive`, cut it to the episode starting at 0, and edit.
+3. `kuliss notes`.
+4. `kuliss finish`. Re-run it after any change to the edit.
 
-- No session template: `kuliss new` builds the project itself (1080p60, only the `Assets`
-  tracks); `kuliss sync` creates the players' tracks with the mixer from the crew file
-  `_assets/kuliss.toml` and starts the recordings at 0. Still to do by Kenneth:
-  - [x] `_assets/kuliss.toml` holds the old template's mixer values. The old template
-        (`_assets/samkvam-session_template.kdenlive`) can be deleted.
-  - [ ] Open a fresh `kuliss new` + `kuliss sync` project in the Kdenlive GUI: track order,
-        mixer values (voice gain, pan, Audio contrast), and that Kdenlive saves it without
-        complaint. Verified so far only through `AppRun --render`.
-- Namecards: the overlay replaces them; no `Nametags` track.
-- The duck stays on the first voice clip.
+Decided:
+- 2026-11-17: no session template; namecards are replaced by the overlay; the duck stays on
+  the first voice clip.
+- 2026-11-18:
+  - kuliss uses the `Assets` tracks and never adds its own, except the `kuliss` overlay
+    track.
+  - One show folder with `_assets/`; no `.kuliss` folder.
+  - No `relink` command.
 
 ## For Kenneth to judge
 
