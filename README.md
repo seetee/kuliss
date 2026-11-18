@@ -24,6 +24,41 @@ uv tool install git+https://github.com/seetee/kuliss.git
 uv run kuliss finish ~/episodes/avsnitt217/avsnitt217.kdenlive --dry-run
 ```
 
+Update later with `uv tool upgrade kuliss`.
+
+### Install and run your first project on Windows
+
+kuliss runs on Windows 10 and 11 too; the automated tests run there on every change. A full episode has not yet been finished on Windows, so check the first result carefully.
+
+1. **Install uv.** Open PowerShell (not as administrator) and run the command from the [uv installation page](https://docs.astral.sh/uv/getting-started/installation/):
+
+   ```powershell
+   powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+   ```
+
+   Close PowerShell and open a new one, so it finds `uv`.
+2. **Install kuliss.** This downloads Python and everything else kuliss needs; git is not required:
+
+   ```powershell
+   uv tool install https://github.com/seetee/kuliss/archive/refs/heads/main.zip
+   kuliss --help
+   ```
+
+   If `kuliss` is not found, run `uv tool update-shell` and open a new PowerShell. To update later, run the install command again with `--force` added.
+3. **Get the theme in place.** Put the game's `theme.toml` (see [Making a theme](#making-a-theme)) next to your episode's `.kdenlive` file or in a folder above it, together with the images and sounds it names. The paths inside a theme are relative to the theme file and use `/`, so the same theme works on Linux and Windows.
+4. **Check, preview, finish.** Close the project in Kdenlive, then, with the path in quotes if it has spaces:
+
+   ```powershell
+   cd "C:\Users\you\Videos\Samkväm\session_28_2026-11-01\avsnitt228"
+   kuliss finish avsnitt228.kdenlive --dry-run      # does it find every player?
+   kuliss finish avsnitt228.kdenlive --preview 90   # look at avsnitt228-overlay-preview.mkv
+   kuliss finish avsnitt228.kdenlive                # render and update the project
+   ```
+
+   Open the project in Kdenlive again afterwards. A backup of the old version, `avsnitt228.kdenlive.<date>-<time>.bak`, sits next to it.
+
+Work on a copy the first time. If the crew moves projects between Linux and Windows, check that Kdenlive still finds every clip before running kuliss; that case has not been tested.
+
 ## Session workflow
 
 1. **Before recording:** in the folder that holds the `session_*` folders, run
@@ -58,6 +93,8 @@ Run it on a finished (or half-finished) Kdenlive project of a multi-player let's
 - **who is talking**: a ring in the player's colour plus a small sound-bars badge, so the cue never relies on colour alone; the ring's glow and the bars move with the voice level;
 - **every switch between views**: the label slides to the new player and a transition sound plays.
 
+With `show_view = false` in the theme it shows only who is talking: all avatars the same size, no name label, and no switch sounds.
+
 Everything is read from the project itself: your cuts, which clip is whose, and which audio stream is each person's voice. There are no file-name dates or stream titles to configure. The overlay fades out during the intro, the outro and other full-screen clips that aren't a player's view. It works for any game: the look comes from a small theme file with a backdrop, 1–8 avatars, colours, a font and the transition sound.
 
 ### Run
@@ -91,7 +128,41 @@ Copy [`theme.example.toml`](theme.example.toml) to `theme.toml` next to the proj
 
 - `voice_track` is the name of the Kdenlive **audio track** holding that player's voice; it defaults to the player's name, and a track named `<name> Voice` (as `kuliss sync` names them) is found too. The tool uses the audio stream and the cuts you chose on that track.
 - Video clips from the same file as that voice track count as the player's view, whichever video track they sit on. Set `source` only when someone's view is recorded in a different file. It takes a file-name pattern such as `"*_h.mkv"`, or a list of them.
+- `show_view = false` shows only who is talking: no enlarged avatar, no name label, no switch sounds, and `sound` may be left out. The overlay still fades out over the intro and outro.
 - Unknown keys get a warning (usually a typo), and wrong values stop the run with a message saying what is expected.
+
+### Making a theme
+
+A theme is one folder holding `theme.toml` and the files it names. Start from [`theme.example.toml`](theme.example.toml); every line in it is explained there.
+
+1. Make a folder for the game, for example `minecraft-theme/`, next to the `session_*` folders (or put `theme.toml` straight in the folder holding them).
+2. Copy `theme.example.toml` into it as `theme.toml`.
+3. Add one `[[player]]` section per player (1–8) with `name`, `colour` (`"#rrggbb"`) and `avatar`.
+4. Add the files below, and point the theme at them with paths relative to `theme.toml`.
+5. Run `kuliss finish P.kdenlive --preview 30` on a copy of an episode and look at the preview. Adjust `position`, `avatar_size` and the rest, and preview again.
+
+| Key | What it is | Format | Size and length |
+|---|---|---|---|
+| `avatar` (per player) | The player's picture | PNG (transparency kept), JPEG or WebP | Square. Pixel art may be tiny (an 8×8 Minecraft head stays crisp); anything else at least 2.5 × `avatar_size`, so 128×128 px or more for the default 48. Corners are rounded off; a non-square picture is cropped to its centre. |
+| `backdrop` | Behind the avatars | PNG, JPEG or WebP | Same shape as the panel (see below), at least twice its size. It is cropped to fill the panel, its corners are rounded and it is darkened 35% so the avatars stand out, so keep it calm and keep anything important in the middle. Leave it out for a plain dark panel. |
+| `font` | The name label | TTF or OTF file | Bold works best at small sizes. It needs every letter in the names (å, ä, ö). Leave it out for the system's bold sans-serif. |
+| `sound` | Plays on each view switch | FLAC, WAV, OGG or MP3 | Short: under a second. It is cut off at the next switch. Not needed with `show_view = false`. |
+| `intro_audio` | The intro music | FLAC, WAV, OGG or MP3 | Played from 1.5 s into the file, for up to 18 s. |
+| `intro_video` | The intro animation | Video with transparency: `.mov` (QuickTime Animation or ProRes 4444) or `.mkv` (FFV1) | The project's frame size (1920×1080). Its first 6 s are shown, from 0.6 s into the episode. WebM transparency does not survive in Kdenlive. |
+| `outro_audio` | The outro music | FLAC, WAV, OGG or MP3 | Played from 1.7 s into the file, for up to 37 s, ending with the episode. |
+| `outro_image` | The end card | PNG, transparent where the footage should show through | The project's frame size (1920×1080). Shown for the last 20 s, fading in and out. |
+
+The intro and outro timings are the ones Samkväm used by hand, so music made for another show may need trimming to fit. A file shorter than its slot simply ends early.
+
+**Backdrop size.** The panel grows with `avatar_size`, the number of players, the longest name and `orientation`. Some examples with four players (Henrik, Joel, Kenneth, Robin):
+
+| `avatar_size` | horizontal | horizontal, `show_view = false` | vertical | vertical, `show_view = false` |
+|---|---|---|---|---|
+| 48 (default) | 300 × 117 | 252 × 72 | 104 × 432 | 72 × 252 |
+| 64 | 400 × 156 | 336 × 96 | 133 × 576 | 96 × 336 |
+| 96 | 600 × 234 | 504 × 144 | 198 × 864 | 144 × 504 |
+
+So for the default look a 900 × 350 px backdrop is plenty. If the panel's shape differs from the picture's, the edges are cropped, never stretched.
 
 ### How it decides
 
