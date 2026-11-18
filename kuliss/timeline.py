@@ -1,12 +1,14 @@
 """Reading and patching a Kdenlive project (MLT XML).
 
 Only stdlib ElementTree and targeted edits: everything this tool does not own
-is written back exactly as Kdenlive left it. Our additions are one video and
-one audio track named TRACK_NAME, plus bin clips named CLIP_PREFIX + "...";
-a re-run finds and reuses them instead of adding more.
+is written back exactly as Kdenlive left it. Our additions are one video track
+named TRACK_NAME (the overlay), our clips on the Assets tracks (intro, outro,
+switch sounds), and bin clips named CLIP_PREFIX + "..."; a re-run finds and
+reuses them instead of adding more.
 """
 
 import fnmatch
+import logging
 import re
 import time
 import uuid
@@ -21,12 +23,16 @@ from .config import Crew, Mixer, Player
 from .errors import die
 from .files import backup, write_atomic
 
+log = logging.getLogger(__name__)
+
 TRACK_NAME = "kuliss"
 OLD_TRACK_NAME = "kuliss speaker"  # until 2026-11-11; a re-run renames it
-SOUND_LEVEL = -24  # dB on our audio track's mixer when created, the crew's level for effects
+SOUND_LEVEL = -24  # dB on an Assets audio track we create, the crew's level for effects
 CLIP_PREFIX = "kuliss speaker"
 SUPPORTED_VERSIONS = {"1.1"}  # kdenlive:docproperties.version (Kdenlive 23.08 - 26.08)
-ASSETS, ASSETS_OURS = "Assets", "Assets Kuliss"  # where the intro and outro go
+ASSETS = "Assets"  # the tracks for the intro, outro and switch sounds
+# (name, audio?) of tracks kuliss used before 2026-11-18; a re-run empties them of our clips
+OLD_TRACKS = ((TRACK_NAME, True), ("Assets Kuliss", True), ("Assets Kuliss", False))
 # The intro's and outro's volume curves, in source time: full, then ducked 15 dB under
 # the voices / ducked, then full for the outro card. Copied from the crew's episodes;
 # the intro's duck starts {at} s into the timeline, where the first voice clip does.
@@ -518,9 +524,9 @@ def ensure_track(
     mixer: Mixer | None = None,
 ) -> ET.Element:
     """The named track's first playlist, emptied; the track is created if missing.
-    Our audio tracks go below all others; any other new audio track on top of the
-    audio tracks; a new video track on top, or right under the video track named `under`.
-    A new audio track gets `mixer` (ours: SOUND_LEVEL)."""
+    A new Assets audio track goes below all others, any other new audio track on top
+    of the audio tracks; a new video track on top, or right under the video track
+    named `under`. A new audio track gets `mixer`."""
     seq, byid = project.seq, project.byid()
     refs = seq.findall("track")
     t = _find_track(project, name, audio)
@@ -547,8 +553,6 @@ def ensure_track(
             set_prop(pl, "kdenlive:audio_track", 1)
         ET.SubElement(tractor, "track", producer=pl.get("id"), hide="video" if audio else "audio")
         pls.append(pl)
-    if audio and name in (TRACK_NAME, ASSETS_OURS):
-        mixer = Mixer(SOUND_LEVEL)
     if audio and mixer:  # set only now: the editor's later changes stay
         _mix(tractor, base, mixer)
     at = list(project.root).index(seq)
@@ -556,7 +560,7 @@ def ensure_track(
         project.root.insert(at + n, el)
 
     # audio tracks sit below all video tracks
-    if audio and name in (TRACK_NAME, ASSETS_OURS):
+    if audio and name == ASSETS:
         k = 1
     elif audio:
         audio_refs = [
@@ -630,83 +634,122 @@ def _moved_placement(project: Project) -> ET.Element | None:
     return None
 
 
-def _assets_track(project: Project, audio: bool) -> str:
-    """The track for the intro and outro: Assets when it is empty or holds only our
-    clips, else Assets Kuliss, so nothing the editor placed is ever in the way."""
-    t = _find_track(project, ASSETS, audio)
-    if t is None or _find_track(project, ASSETS_OURS, audio) is not None:
-        return ASSETS_OURS
-    byid = project.byid()
-    ours = {
+def _our_ids(project: Project) -> set[str]:
+    """The kdenlive:ids of our bin clips."""
+    return {
         props(e).get("kdenlive:id")
         for e in project.root
         if props(e).get("kdenlive:clipname", "").startswith(CLIP_PREFIX)
     }
-    used = {
-        props(byid[en.get("producer")]).get("kdenlive:id") if en.get("producer") in byid else None
-        for sub in t.findall("track")
-        for en in byid[sub.get("producer")].findall("entry")
-    }
-    return ASSETS if used <= ours else ASSETS_OURS
 
 
-def _bookends(project: Project, media: dict[str, tuple[Path, int]], duck_at: float) -> None:
-    """The intro and outro in `media` (key -> file, its length in frames) at their
-    fixed places (see bookends) on the Assets tracks. The intro music is lowered
+def _entries_at(project: Project, playlist: ET.Element) -> list[tuple[int, int, ET.Element]]:
+    """(timeline frame, frames, entry) for each entry of a playlist."""
+    pos, out = 0, []
+    for c in playlist:
+        if c.tag == "blank":
+            pos += frames(c.get("length"), project.fps)
+        elif c.tag == "entry":
+            n = frames(c.get("out"), project.fps) - frames(c.get("in"), project.fps) + 1
+            out.append((pos, n, c))
+            pos += n
+    return out
+
+
+def _timecode(frame: int, fps: float) -> str:
+    seconds = round(frame / fps)
+    return f"{seconds // 60:02d}:{seconds % 60:02d}"
+
+
+def _refill(
+    project: Project, track: ET.Element, ours: set[str], new: list[tuple[str, int, ET.Element]]
+) -> list[str]:
+    """Replace our clips on a track with `new` ((what, timeline frame, entry), most
+    important first). The editor's clips stay exactly where they are; a new clip that
+    would overlap anything already on the track is left out. Returns what was left out."""
+    byid = project.byid()
+    playlists = [byid[sub.get("producer")] for sub in track.findall("track")]
+    kept, taken = [], []  # (start, frames, entry) to write; (start, frames) occupied
+    for i, playlist in enumerate(playlists):
+        for start, n, en in _entries_at(project, playlist):
+            src = byid.get(en.get("producer"))
+            if i == 0 and src is not None and props(src).get("kdenlive:id") in ours:
+                continue  # ours: replaced below
+            if i == 0:
+                kept.append((start, n, en))
+            taken.append((start, n))  # the second playlist holds same-track mixes
+    left_out = []
+    for what, start, en in new:
+        n = int(en.get("out")) - int(en.get("in")) + 1
+        if any(start < s + m and s < start + n for s, m in taken):
+            left_out.append(f"{what} at {_timecode(start, project.fps)}")
+            continue
+        kept.append((start, n, en))
+        taken.append((start, n))
+
+    first = playlists[0]
+    for c in [c for c in first if c.tag in ("entry", "blank")]:
+        first.remove(c)
+    pos = 0
+    for start, n, en in sorted(kept, key=lambda item: item[0]):
+        if start > pos:
+            ET.SubElement(first, "blank", length=str(start - pos))
+        first.append(en)
+        pos = start + n
+    track.set("out", str(max(project.length, pos) - 1))
+    return left_out
+
+
+def _entry(producer: str, kid: str, src_in: int, n: int) -> ET.Element:
+    """A timeline entry of n frames of a clip, from source frame src_in."""
+    en = ET.Element("entry", {"producer": producer, "in": str(src_in), "out": str(src_in + n - 1)})
+    set_prop(en, "kdenlive:id", kid)
+    return en
+
+
+def _bookend_entries(
+    project: Project, media: dict[str, tuple[Path, int]], duck_at: float
+) -> list[tuple[str, int, ET.Element]]:
+    """(what, timeline frame, entry) for the intro and outro in `media` (key -> file, its
+    length in frames), at their fixed places (see bookends). The intro music is lowered
     `duck_at` seconds in (the first voice), or at DUCK_AT if that is outside DUCK_RANGE."""
     if not DUCK_RANGE[0] <= duck_at <= DUCK_RANGE[1]:
         duck_at = DUCK_AT
-    L, fps = project.length, project.fps
-    spots = bookends(L, fps)
-    for audio in (True, False):
-        keys = [k for k in spots if k in media and k.endswith("audio") == audio]
-        if not keys:
+    fps = project.fps
+    out = []
+    for key, (start, src_in, n) in bookends(project.length, fps).items():
+        if key not in media:
             continue
-        clips = {
-            k: _ensure_clip(project, k, *media[k], audio=audio, image=k.endswith("image"))
-            for k in keys
-        }
-        pl = ensure_track(
-            project,
-            audio,
-            _assets_track(project, audio),
-            "kuliss_assets_audio" if audio else "kuliss_assets_video",
-            under=TRACK_NAME,
+        n = min(n, media[key][1] - src_in)
+        if start < 0 or n <= 0:  # a project shorter than the outro
+            continue
+        audio = key.endswith("audio")
+        kid, producer = _ensure_clip(
+            project, key, *media[key], audio=audio, image=key.endswith("image")
         )
-        pos = 0
-        for k in keys:
-            start, src_in, n = spots[k]
-            n = min(n, media[k][1] - src_in)
-            if start < pos or n <= 0:  # a project too short to hold both
-                continue
-            if start > pos:
-                ET.SubElement(pl, "blank", length=str(start - pos))
-            kid, prod = clips[k]
-            en = ET.SubElement(
-                pl, "entry", {"producer": prod, "in": str(src_in), "out": str(src_in + n - 1)}
-            )
-            set_prop(en, "kdenlive:id", kid)
-            if k in LEVELS:
-                flt = ET.SubElement(en, "filter", id=f"kuliss_speaker_{k}_level")
-                level = LEVELS[k].format(at=1.467 + duck_at, end=1.467 + duck_at + DUCK_RAMP)
-                for key, v in _volume(level, kdenlive_id="volume").items():
-                    set_prop(flt, key, v)
-            if k.endswith("image"):
-                a, b = round(FADE_IN * fps), round(FADE_OUT * fps)
-                for kind, span, alpha in (
-                    ("fade_from_black", {"out": str(a)}, "0=0;-1=1"),
-                    ("fade_to_black", {"in": str(n - 1 - b), "out": str(n - 1)}, "0=1;-1=0"),
-                ):
-                    flt = ET.SubElement(en, "filter", {"id": f"kuliss_speaker_{k}_{kind}", **span})
-                    for key, v in {
-                        "start": 1,
-                        "level": 1,
-                        "mlt_service": "brightness",
-                        "kdenlive_id": kind,
-                        "alpha": alpha,
-                    }.items():
-                        set_prop(flt, key, v)
-            pos = start + n
+        en = _entry(producer, kid, src_in, n)
+        if key in LEVELS:
+            flt = ET.SubElement(en, "filter", id=f"kuliss_speaker_{key}_level")
+            level = LEVELS[key].format(at=1.467 + duck_at, end=1.467 + duck_at + DUCK_RAMP)
+            for k, v in _volume(level, kdenlive_id="volume").items():
+                set_prop(flt, k, v)
+        if key.endswith("image"):
+            a, b = round(FADE_IN * fps), round(FADE_OUT * fps)
+            for kind, span, alpha in (
+                ("fade_from_black", {"out": str(a)}, "0=0;-1=1"),
+                ("fade_to_black", {"in": str(n - 1 - b), "out": str(n - 1)}, "0=1;-1=0"),
+            ):
+                flt = ET.SubElement(en, "filter", {"id": f"kuliss_speaker_{key}_{kind}", **span})
+                for k, v in {
+                    "start": 1,
+                    "level": 1,
+                    "mlt_service": "brightness",
+                    "kdenlive_id": kind,
+                    "alpha": alpha,
+                }.items():
+                    set_prop(flt, k, v)
+        out.append((key.replace("_", " "), start, en))
+    return out
 
 
 def patch(
@@ -719,8 +762,8 @@ def patch(
     media: dict[str, tuple[Path, int]] | None = None,
     duck_at: float = DUCK_AT,
 ) -> None:
-    """Put the overlay (full length, placed at rect) and one sound per cut on our tracks,
-    and the intro and outro in `media` on the Assets tracks."""
+    """Put the overlay (full length, placed at rect) on our track, and the intro and outro
+    in `media` and one sound per cut on the Assets tracks, around the editor's clips."""
     L = project.length
     vid, vprod = _ensure_clip(project, "overlay", overlay, L, audio=False)
     aid, aprod = _ensure_clip(project, "sound", sound, sound_len, audio=True)
@@ -746,19 +789,53 @@ def patch(
         }.items():
             set_prop(f, k, v)
 
-    apl = ensure_track(project, audio=True)
-    pos = 0
-    for i, c in enumerate(cut_frames):
+    new = {audio: [] for audio in (True, False)}  # audio? -> (what, frame, entry)
+    for what, start, en in _bookend_entries(project, media or {}, duck_at):
+        new[what.endswith("audio")].append((what, start, en))
+    for i, c in enumerate(cut_frames):  # each sound ends at the next cut at the latest
         nxt = cut_frames[i + 1] if i + 1 < len(cut_frames) else L
         n = min(sound_len, nxt - c, L - c)
-        if c < pos or n <= 0:
+        if n > 0:
+            new[True].append(("switch sound", c, _entry(aprod, aid, 0, n)))
+
+    ours = _our_ids(project)
+    for audio, entries in new.items():
+        track = _find_track(project, ASSETS, audio)
+        if track is None:
+            if not entries:
+                continue
+            ensure_track(
+                project,
+                audio,
+                ASSETS,
+                "kuliss_assets_audio" if audio else "kuliss_assets_video",
+                under=TRACK_NAME,
+                mixer=Mixer(SOUND_LEVEL),
+            )
+            track = _find_track(project, ASSETS, audio)
+        left_out = _refill(project, track, ours, entries)
+        if left_out:
+            log.warning(
+                "%d of our clips would overlap clips on the %s Assets track and were left out: %s",
+                len(left_out),
+                "audio" if audio else "video",
+                ", ".join(left_out),
+            )
+
+    for name, audio in OLD_TRACKS:  # where kuliss put things before
+        track = _find_track(project, name, audio)
+        if track is None:
             continue
-        if c > pos:
-            ET.SubElement(apl, "blank", length=str(c - pos))
-        en = ET.SubElement(apl, "entry", {"producer": aprod, "in": "0", "out": str(n - 1)})
-        set_prop(en, "kdenlive:id", aid)
-        pos = c + n
-    _bookends(project, media or {}, duck_at)
+        _refill(project, track, ours, [])
+        byid = project.byid()
+        if not any(
+            byid[sub.get("producer")].find("entry") is not None for sub in track.findall("track")
+        ):
+            log.warning(
+                "the %s track %r is no longer used and is now empty; delete it in Kdenlive",
+                "audio" if audio else "video",
+                props(track).get("kdenlive:track_name"),
+            )
 
 
 def save(project: Project, path: Path) -> None:

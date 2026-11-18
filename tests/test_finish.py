@@ -134,7 +134,7 @@ def test_patch_adds_tracks_once_and_renumbers(tmp_path):
     refs = [r.get("producer") for r in seq.findall("track")]
     assert refs == [
         "black",
-        "kuliss_speaker_audio",
+        "kuliss_assets_audio",
         "t_voice",
         "t_vh",
         "t_top",
@@ -142,7 +142,7 @@ def test_patch_adds_tracks_once_and_renumbers(tmp_path):
     ]
     b = {t.get("id"): T.props(t)["b_track"] for t in seq.findall("transition")}
     assert b == {
-        "kuliss_speaker_audio_transition": "1",
+        "kuliss_assets_audio_transition": "1",
         "x1": "2",
         "x2": "3",
         "x3": "4",
@@ -155,15 +155,16 @@ def test_patch_adds_tracks_once_and_renumbers(tmp_path):
 
     root = ET.parse(out).getroot()
     byid = {e.get("id"): e for e in root if e.get("id")}
-    sounds = byid["kuliss_speaker_audio_pl0"].findall("entry")
+    sounds = byid["kuliss_assets_audio_pl0"].findall("entry")
     assert [(e.get("in"), e.get("out")) for e in sounds] == [
         ("0", "24"),
         ("0", "9"),
     ]  # last one trimmed
-    assert byid["kuliss_speaker_audio_pl0"].find("blank").get("length") == "100"
+    assert byid["kuliss_assets_audio_pl0"].find("blank").get("length") == "100"
     rect = [T.props(f)["rect"] for f in byid["kuliss_speaker_video_pl0"].iter("filter")]
     assert rect == ["0=24 24 304 171 1.000000"]
-    assert T.props(byid["kuliss_speaker_audio"].find("filter"))["level"] == str(T.SOUND_LEVEL)
+    assert T.props(byid["kuliss_assets_audio"].find("filter"))["level"] == str(T.SOUND_LEVEL)
+    assert T.props(byid["kuliss_assets_audio"])["kdenlive:track_name"] == "Assets"
 
     # a project patched under the old track name: found, renamed, nothing added
     out.write_text(out.read_text().replace(">kuliss</property>", ">kuliss speaker</property>"))
@@ -297,7 +298,7 @@ def test_rerun_after_kdenlive_renamed_our_ids(tmp_path):
     root = ET.parse(out).getroot()
     byid = {e.get("id"): e for e in root if e.get("id")}
     names = [T.props(t).get("kdenlive:track_name") for t in root.iter("tractor")]
-    assert names.count("kuliss") == 2
+    assert names.count("kuliss") == 1  # the overlay's; the sounds go on Assets
     ours = [
         e
         for e in root
@@ -517,7 +518,7 @@ def test_rerun_keeps_an_overlay_the_editor_moved(tmp_path):
     assert rect(proj) == ["00:00:00.000=500 300 304 171 1"]
 
 
-def test_intro_and_outro_go_on_an_assets_track(tmp_path):
+def test_intro_outro_and_sounds_share_the_assets_tracks_with_the_editor(tmp_path, caplog):
     p = tmp_path / "ep.kdenlive"
     load(tmp_path)
     p.write_text(
@@ -534,38 +535,66 @@ def test_intro_and_outro_go_on_an_assets_track(tmp_path):
 
     def run(duck=99.0):  # a first voice outside the intro: the default
         proj = T.load(p)
-        T.patch(proj, tmp_path / "o.mkv", (0, 0, 16, 9), tmp_path / "s.flac", 5, [100], media, duck)
+        T.patch(
+            proj, tmp_path / "o.mkv", (0, 0, 16, 9), tmp_path / "s.flac", 5, [100, 300], media, duck
+        )
         T.save(proj, p)
         return T.load(p)
 
     proj = run()
     first = p.read_bytes()
-    # the video Assets track holds the editor's clips, and there is no audio one: both are new
+    # the video Assets track is the editor's and is used as it is; the audio one is new
     assert [(t.name, t.audio) for t in proj.tracks] == [
-        ("Assets Kuliss", True),
-        ("kuliss", True),
+        ("Assets", True),
         ("Henrik", True),
         ("Henrik", False),
         ("Assets", False),
-        ("Assets Kuliss", False),
         ("kuliss", False),
     ]
     audio, video = (
-        next(t for t in proj.tracks if t.name == "Assets Kuliss" and t.audio == a)
-        for a in (True, False)
+        next(t for t in proj.tracks if t.name == "Assets" and t.audio == a) for a in (True, False)
     )
-    assert [(e.start, e.src_in, e.length) for e in audio.entries] == [(0, 15, 180), (626, 17, 374)]
-    assert [(e.start, e.src_in, e.length) for e in video.entries] == [(6, 0, 60), (798, 0, 200)]
-    assert len(proj.tracks[4].entries) == 2  # the editor's Assets clips are untouched
+    # intro music, the sound at 30 s, outro music; the sound at 10 s would overlap the intro
+    assert [(e.start, e.src_in, e.length) for e in audio.entries] == [
+        (0, 15, 180),
+        (300, 0, 5),
+        (626, 17, 374),
+    ]
+    # the editor's clips stay put (0-19, 120-149); our intro video would overlap the first
+    assert [(e.start, e.src_in, e.length) for e in video.entries] == [
+        (0, 0, 20),
+        (120, 0, 30),
+        (798, 0, 200),
+    ]
+    assert "switch sound at 00:10" in caplog.text and "intro video at 00:01" in caplog.text
     run()
     assert p.read_bytes() == first
     assert "00:00:06.967=0;00:00:07.450$=-15" in first.decode()  # no voice start given: 5.5 s
-
-    # an Assets track holding nothing but our clips is used as it is
-    p.write_text(first.decode().replace(">Assets Kuliss</property>", ">Assets</property>", 1))
-    assert [(t.name, t.audio) for t in run(5.0).tracks][:3] == [
-        ("Assets", True),
-        ("kuliss", True),
-        ("Henrik", True),
-    ]
+    run(5.0)
     assert "00:00:06.467=0;00:00:06.950$=-15" in p.read_text()  # ducked where the voices start
+
+
+def test_old_kuliss_tracks_are_emptied(tmp_path, caplog):
+    sound = (
+        '<chain id="c_old" out="9"><property name="resource">/a/s.flac</property>'
+        '<property name="kdenlive:id">9</property>'
+        '<property name="kdenlive:clipname">kuliss speaker sound</property></chain>'
+    )
+    old = track(
+        "t_old",
+        "Assets Kuliss",
+        True,
+        '<blank length="50"/><entry producer="c_old" in="0" out="4"/>',
+    )
+    p = tmp_path / "ep.kdenlive"
+    p.write_text(
+        PROJECT.replace('<producer id="black">', f'{sound}{old}<producer id="black">').replace(
+            '<track producer="black"/>', '<track producer="black"/><track producer="t_old"/>'
+        )
+    )
+    proj = T.load(p)
+    T.patch(proj, tmp_path / "o.mkv", (0, 0, 16, 9), tmp_path / "s.flac", 5, [100])
+    T.save(proj, p)
+    (old_track,) = [t for t in T.load(p).tracks if t.name == "Assets Kuliss"]
+    assert old_track.entries == []
+    assert "'Assets Kuliss' is no longer used" in caplog.text
