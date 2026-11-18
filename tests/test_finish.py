@@ -598,3 +598,22 @@ def test_old_kuliss_tracks_are_emptied(tmp_path, caplog):
     (old_track,) = [t for t in T.load(p).tracks if t.name == "Assets Kuliss"]
     assert old_track.entries == []
     assert "'Assets Kuliss' is no longer used" in caplog.text
+
+
+def test_show_view_off_draws_only_who_talks(tmp_path):
+    path = write_theme(tmp_path, "show_view = false")
+    path.write_text(path.read_text().replace('sound = "s.flac"\n', ""))
+    theme = load_theme(path)  # no switch sound needed
+    assert not theme.show_view and theme.sound is None
+    lay = render.layout(theme, 1920, 1080)
+    assert lay.V == lay.S
+    painter = render.Painter(theme, lay)
+    idle = painter.draw(1.0, -1, 0, 1.0, (0.0,))
+    viewed_on = render.Painter(load_theme(write_theme(tmp_path)), lay).draw(1.0, -1, 0, 1.0, (0.0,))
+    assert (idle != viewed_on).any()  # no label, no enlarged avatar
+    assert (painter.draw(1.0, -1, 0, 1.0, (1.0,)) != idle).any()  # the talking marker stays
+
+    proj = load(tmp_path)
+    T.patch(proj, tmp_path / "o.mkv", (0, 0, 10, 10), None, 0, [])
+    names = [T.props(p).get("kdenlive:clipname", "") for p in proj.root]
+    assert not any(n.endswith("sound") for n in names)

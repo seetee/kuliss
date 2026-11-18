@@ -756,7 +756,7 @@ def patch(
     project: Project,
     overlay: Path,
     rect: tuple[int, int, int, int],
-    sound: Path,
+    sound: Path | None,
     sound_len: int,
     cut_frames: list[int],
     media: dict[str, tuple[Path, int]] | None = None,
@@ -766,7 +766,8 @@ def patch(
     in `media` and one sound per cut on the Assets tracks, around the editor's clips."""
     L = project.length
     vid, vprod = _ensure_clip(project, "overlay", overlay, L, audio=False)
-    aid, aprod = _ensure_clip(project, "sound", sound, sound_len, audio=True)
+    if sound:
+        aid, aprod = _ensure_clip(project, "sound", sound, sound_len, audio=True)
 
     moved = _moved_placement(project)  # before the track is emptied
     vpl = ensure_track(project, audio=False)

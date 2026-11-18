@@ -2,6 +2,7 @@
 # folder above it (e.g. the season folder), or pass --theme.
 # Paths are relative to this file.
 
+# Image, sound and video formats and sizes: see "Making a theme" in README.md.
 sound    = "../_assets/namecard/60003__qubodup__loud-swosh-16.flac"  # plays on every view switch
 # backdrop = "backdrop.png"     # behind the avatars; omitted = dark translucent panel
 # font     = "../_assets/Monocraft.otf"   # omitted = system sans-serif bold
@@ -17,6 +18,8 @@ sound    = "../_assets/namecard/60003__qubodup__loud-swosh-16.flac"  # plays on 
 #                               # qtrle: QuickTime Animation, lossless, about 20% smaller files
 # speech_threshold = 0.35       # 0.1-0.9; lower if the talking marker misses words,
 #                               # higher if noise sets it off
+# show_view = true              # false: show only who talks; no enlarged avatar, no name
+#                               # label and no switch sounds (then `sound` may be left out)
 
 # The show's intro and outro (each optional). They go on the project's "Assets" audio and
 # video tracks, beside your own clips there (one of ours that would overlap yours is left out):

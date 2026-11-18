@@ -121,7 +121,7 @@ def analyse(project: str | Path, theme_file: str | Path | None = None) -> Analys
         painter,
         view,
         spans,
-        timeline.cuts(spans),
+        timeline.cuts(spans) if theme.show_view else [],
         talking,
         time.monotonic() - t0,
     )
@@ -172,7 +172,7 @@ def apply(analysis: Analysis, overlay: Path) -> Path:
         overlay,
         rect,
         theme.sound,
-        sound_frames(theme.sound, fps),
+        sound_frames(theme.sound, fps) if theme.sound else 0,
         sounds_at,
         media,
         first_voice / fps,

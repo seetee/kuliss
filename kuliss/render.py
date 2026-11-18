@@ -6,6 +6,7 @@
 - who is talking: a ring in the player's colour plus a small badge with sound
   bars (so it never relies on colour alone), faded in and out; the ring's glow
   and the bars move with the voice level;
+- theme `show_view = false` leaves out the first point: same-size avatars, no label;
 - when no player's view is on screen (intro, outro, full-screen assets) the
   whole overlay fades out.
 
@@ -107,22 +108,25 @@ def layout(theme: Theme, frame_w: int, frame_h: int) -> Layout:
     """A row of avatars ("horizontal") or a column along the frame edge
     ("vertical"), with the name label under the viewed avatar either way."""
     n, S = len(theme.players), theme.avatar_size
-    V = round(S * 1.25)
+    V = round(S * 1.25) if theme.show_view else S
     gap, pad = max(4, S // 4), max(6, S // 4)
     font_size = max(11, round(S / 3))
     label_h = round(font_size * 1.7)
     h, v = anchor(theme.position)
     font = load_font(theme, font_size)
     label_w = max(font.measureText(p.name) for p in theme.players) + label_h
+    below = gap // 2 + label_h if theme.show_view else 0  # room for the name label
+    if not theme.show_view:
+        label_w = 0
     vertical = theme.orientation == "vertical"
-    cell = V + gap // 2 + label_h if vertical else V  # a column leaves label room per avatar
+    cell = V + below if vertical else V  # a column leaves label room per avatar
     run = [pad + V / 2 + i * (cell + gap) for i in range(n)]  # avatar centres along the bar
     bar = 2 * pad + n * cell + (n - 1) * gap
     if vertical:
         pw, ph = max(2 * pad + V, label_w + 8), bar
     else:
         pw = max(bar, label_w + 8)  # the label is kept 4 px inside the panel
-        ph = pad + V + gap // 2 + label_h + pad
+        ph = pad + V + below + pad
         run = [x + (pw - bar) / 2 for x in run]  # centre the avatars in a wider panel
     inset = max(4, S // 8)
     g = math.gcd(frame_w, frame_h)
@@ -255,6 +259,7 @@ class Painter:
             e = ease(t) if a >= 0 else 1.0
             for i in range(len(self.theme.players)):
                 w = e if i == b else (1 - e) if i == a else 0.0
+                w = w if self.theme.show_view else 0.0
                 self._avatar(
                     c,
                     i,
@@ -263,7 +268,8 @@ class Painter:
                     talk[i],
                     level[i],
                 )
-            self._label(c, a if a >= 0 else b, b, e)
+            if self.theme.show_view:
+                self._label(c, a if a >= 0 else b, b, e)
             c.restore()
         return self.surface.makeImageSnapshot().toarray(
             colorType=skia.kBGRA_8888_ColorType, alphaType=skia.kUnpremul_AlphaType

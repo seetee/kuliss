@@ -38,7 +38,7 @@ class Player:
 @dataclass(frozen=True)
 class Theme:
     players: tuple[Player, ...]
-    sound: Path
+    sound: Path | None  # None only when show_view is off
     backdrop: Path | None = None
     font: Path | None = None
     position: str = "top-left"
@@ -49,6 +49,7 @@ class Theme:
     sound_offset: float = 0.0  # s; shifts every transition sound relative to its cut
     codec: str = "ffv1"  # overlay video codec, see CODECS
     speech_threshold: float = 0.35  # Silero speech probability that counts as talking
+    show_view: bool = True  # False: only who talks; no viewed avatar, label or switch sounds
     intro_audio: Path | None = None  # the four below: placed on the Assets tracks,
     intro_video: Path | None = None  # see timeline.bookends
     outro_audio: Path | None = None
@@ -97,6 +98,7 @@ THEME_KEYS = {
     "sound_offset",
     "codec",
     "speech_threshold",
+    "show_view",
     "player",
     *BOOKENDS,
 }
@@ -186,12 +188,13 @@ def load_theme(path: Path) -> Theme:
     if len({p.name for p in players}) != len(players):
         die(f"{path.name}: player names must be unique")
 
-    if "sound" not in raw:
-        die(f'{path.name}: missing sound = "..." (the transition sound)')
     w = path.name  # where: for the error messages
+    show_view = _get(raw, "show_view", bool, True, w, rule="true or false")
+    if show_view and "sound" not in raw:
+        die(f'{path.name}: missing sound = "..." (the transition sound)')
     return Theme(
         players=tuple(players),
-        sound=file(raw["sound"], "sound"),
+        sound=file(raw["sound"], "sound") if show_view else None,
         backdrop=file(raw["backdrop"], "backdrop") if "backdrop" in raw else None,
         font=file(raw["font"], "font") if "font" in raw else None,
         position=_get(
@@ -240,6 +243,7 @@ def load_theme(path: Path) -> Theme:
             lambda v: 0.1 <= v <= 0.9,
             "between 0.1 and 0.9",
         ),
+        show_view=show_view,
         **{k: file(raw[k], k) for k in BOOKENDS if k in raw},
     )
 
