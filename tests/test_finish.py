@@ -105,13 +105,11 @@ def test_parse_and_view(tmp_path):
         ("Assets", False),
     ]
     view = T.view_map(proj, PLAYERS)
-    assert (view[:20] == -1).all()  # full-screen intro covers Henrik
-    assert (view[20:100] == 0).all()
+    assert (view[:100] == 0).all()  # a full-screen clip that is no player's is ignored
     assert (view[100:150] == 1).all()  # identity comes from the clip, not the track name
-    assert (view[120:150] == 1).all()  # a placed card (qtblend) does not cover
     spans = T.view_spans(view, 10)  # the 4-frame Henrik flash is absorbed
-    assert spans == [(0, 20, -1), (20, 100, 0), (100, 200, 1)]
-    assert T.cuts(spans) == [100]  # no swoosh for the first view after the intro
+    assert spans == [(0, 100, 0), (100, 200, 1)]
+    assert T.cuts(spans) == [100]  # no swoosh for the first view
     assert [(e.start, e.src_in, e.audio_index) for e in T.voice_entries(proj, PLAYERS[0])] == [
         (0, 100, 2)
     ]
@@ -278,9 +276,7 @@ def test_voice_level_follows_loudness_and_clips_get_a_warmup(monkeypatch):
     monkeypatch.setattr(
         vad, "speech_windows", lambda pcm, on_at: np.ones(len(pcm) // vad.WINDOW, bool)
     )
-    out = vad.talking(
-        [T.Entry(10, 50, "x", 100, 1, False), T.Entry(70, 20, "x", 2, 1, False)], 10.0, 100
-    )
+    out = vad.talking([T.Entry(10, 50, "x", 100, 1), T.Entry(70, 20, "x", 2, 1)], 10.0, 100)
     assert asked == [(9.5, 5.5), (0.0, 2.2)]  # 0.5 s before the clip, when there is any
     assert (out[10:60] > 0).all() and (out[70:90] > 0).all()
     assert not out[:10].any() and not out[60:70].any() and not out[90:].any()

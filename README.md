@@ -96,8 +96,8 @@ Copy [`theme.example.toml`](theme.example.toml) to `theme.toml` next to the proj
 ### How it decides
 
 - **Whose view**: for each frame, the topmost visible video track showing a player's clip wins.
-  - A full-screen clip that belongs to no player hides the overlay. That means a video or image without a Transform effect, such as the intro.
-  - Placed clips (namecards, picture-in-picture) and titles don't count.
+  - Clips that belong to no player (green screens, namecards, titles, effects) never count, on any track.
+  - The overlay fades out over the intro video and the outro card, which kuliss places itself.
   - Views shorter than 1 s are treated as flashes: they get no switch and no sound.
 - **Who talks**: [Silero VAD](https://github.com/snakers4/silero-vad) runs on each voice track, following your cuts. Two thresholds (hysteresis), a 200 ms hangover and a 60 ms minimum burst stop it from flickering on clicks, while short words ("ja", "nä") still count; the marker lights up 64 ms before the detected onset. If a mic still misses words, lower `speech_threshold` in the theme (default 0.35); raise it if noise triggers the marker.
 - **Contrast**: label text is black or white, whichever contrasts more with the player's colour. That is always at least 4.5:1 (WCAG AA), so any colour is safe. The talking ring gets a black or white edge so it stays visible on any backdrop.

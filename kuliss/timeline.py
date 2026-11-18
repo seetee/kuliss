@@ -36,8 +36,6 @@ LEVELS = {
 }
 DUCK_AT, DUCK_RANGE, DUCK_RAMP = 5.5, (1.0, 15.0), 0.483  # s; default, allowed, ramp length
 FADE_IN, FADE_OUT = 1.533, 0.5  # s; the outro card's
-PICTURES = {"avformat", "avformat-novalidate", "qimage", "pixbuf"}  # video and image clips
-TRANSFORMS = {"qtblend", "affine"}  # an entry with one of these is placed, not full-screen
 PLACED = "kuliss:rect"  # on our overlay's Transform effect: the "x y w h" we last wrote
 # what the editor may have set on our bin clips in Kdenlive; kept across re-runs
 EDITOR_PROPS = (
@@ -56,7 +54,6 @@ class Entry:
     resource: str  # source file
     src_in: int  # first source frame used
     audio_index: int  # absolute ffmpeg stream index, -1 if none
-    fullscreen: bool  # picture shown untransformed, covering the tracks below
 
 
 @dataclass
@@ -179,14 +176,6 @@ def _read(path: Path, tree: ET.ElementTree) -> Project:
                     a, b = frames(c.get("in"), fps), frames(c.get("out"), fps)
                     src = byid.get(c.get("producer"))
                     sp = props(src) if src is not None else {}
-                    moved = any(
-                        props(f).get("mlt_service") in TRANSFORMS for f in c.findall("filter")
-                    )
-                    fullscreen = (
-                        sp.get("mlt_service") in PICTURES
-                        and not moved
-                        and sp.get("video_index") != "-1"
-                    )
                     entries.append(
                         Entry(
                             pos,
@@ -194,7 +183,6 @@ def _read(path: Path, tree: ET.ElementTree) -> Project:
                             resolve(sp.get("resource", "")),
                             a,
                             int(sp.get("audio_index") or -1),
-                            fullscreen,
                         )
                     )
                     pos += b - a + 1
@@ -255,17 +243,17 @@ def present(project: Project, players: tuple[Player, ...]) -> tuple[Player, ...]
 
 def view_map(project: Project, players: tuple[Player, ...]) -> np.ndarray:
     """Per frame: index of the player whose view is on screen, -1 for none.
-    The topmost visible video track showing a player's clip wins. Other clips
-    hide the view only when shown full-screen (an intro video, an outro card);
-    placed ones (namecards, picture-in-picture) and titles are ignored."""
+    The topmost visible video track showing a player's clip wins. Every other clip
+    (green screens, namecards, titles, effects) is ignored, wherever it sits; the
+    intro and outro are blanked by the caller, finish.analyse."""
     view = np.full(project.length, -1, np.int16)
     for t in project.tracks:  # ascending index = bottom to top
         if t.audio or t.hidden or t.name in (TRACK_NAME, OLD_TRACK_NAME):
             continue
         for e in t.entries:
             who = player_of(e.resource, players)
-            if who is not None or e.fullscreen:
-                view[e.start : e.start + e.length] = -1 if who is None else who
+            if who is not None:
+                view[e.start : e.start + e.length] = who
     return view
 
 
