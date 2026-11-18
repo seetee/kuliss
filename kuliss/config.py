@@ -3,6 +3,7 @@ The crew file: one TOML for all sessions, holding the mixer settings of the trac
 
 import logging
 import tomllib
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -66,11 +67,11 @@ class Crew:
 
 
 def parse_colour(text: str, where: str) -> tuple[int, int, int]:
-    h = str(text).lstrip("#")
-    if len(h) != 6:
+    digits = str(text).lstrip("#")
+    if len(digits) != 6:
         die(f"{where}: colour must look like \"#e0a030\", got {text!r}")
     try:
-        return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
+        return tuple(int(digits[i:i + 2], 16) for i in (0, 2, 4))
     except ValueError:
         die(f"{where}: colour must look like \"#e0a030\", got {text!r}")
 
@@ -84,20 +85,21 @@ VOICE_KEYS = {"gain", "pan", "contrast"}
 CODECS = ("ffv1", "qtrle")   # ffv1: free/open, lossless; qtrle: about 20% smaller files, no faster
 
 
-def _warn_unknown(table, known, where):
+def _warn_unknown(table: dict, known: set[str], where: str) -> None:
     for key in sorted(table.keys() - known):
         log.warning("%s: unknown key %r (ignored; typo?)", where, key)
 
 
-def _get(table, key, kind, default, where, check=lambda v: True, rule=""):
+def _get(table: dict, key: str, kind: type, default, where: str,
+         check: Callable[[object], bool] = lambda value: True, rule: str = ""):
     """table[key] if present, else default; dies unless it is a `kind` passing `check`."""
-    v = table.get(key, default)
-    if kind is float and type(v) is int:
-        v = float(v)
-    if type(v) is not kind or not check(v):
+    value = table.get(key, default)
+    if kind is float and type(value) is int:
+        value = float(value)
+    if type(value) is not kind or not check(value):
         want = rule or {str: "text", int: "a whole number", float: "a number"}[kind]
-        die(f"{where}: {key} must be {want}, got {v!r}")
-    return v
+        die(f"{where}: {key} must be {want}, got {value!r}")
+    return value
 
 
 def nearest_theme(start: Path) -> Path | None:
@@ -116,7 +118,7 @@ def load_theme(path: Path) -> Theme:
         die(f"{path}: {e}")
     base = path.parent
 
-    def file(value, key):
+    def file(value: object, key: str) -> Path:
         if not isinstance(value, str) or not value:
             die(f"{path.name}: {key} must be a file path, got {value!r}")
         p = (base / value).expanduser().resolve()
@@ -129,23 +131,23 @@ def load_theme(path: Path) -> Theme:
     if not isinstance(table, list):
         die(f"{path.name}: players are written as [[player]] sections")
     players = []
-    for i, p in enumerate(table, 1):
-        where = f"{path.name}: player #{i}"
-        missing = {"name", "colour", "avatar"} - p.keys()
+    for number, entry in enumerate(table, 1):
+        where = f"{path.name}: player #{number}"
+        missing = {"name", "colour", "avatar"} - entry.keys()
         if missing:
             die(f"{where} is missing {', '.join(sorted(missing))}")
-        _warn_unknown(p, PLAYER_KEYS, where)
-        name = _get(p, "name", str, "", where, lambda v: v.strip() != "", "non-empty text")
-        source = p.get("source", [])
+        _warn_unknown(entry, PLAYER_KEYS, where)
+        name = _get(entry, "name", str, "", where, lambda v: v.strip() != "", "non-empty text")
+        source = entry.get("source", [])
         source = [source] if isinstance(source, str) else source
         if not isinstance(source, list) or not all(isinstance(s, str) and s for s in source):
             die(f"{where}: source must be a file-name pattern or a list of them")
         players.append(Player(
             name=name,
-            colour=parse_colour(p["colour"], where),
-            avatar=file(p["avatar"], f"{name}.avatar"),
+            colour=parse_colour(entry["colour"], where),
+            avatar=file(entry["avatar"], f"{name}.avatar"),
             source=tuple(source),
-            voice_track=_get(p, "voice_track", str, name, where),
+            voice_track=_get(entry, "voice_track", str, name, where),
         ))
     if not 1 <= len(players) <= 8:
         die(f"{path.name}: needs 1-8 [[player]] sections, found {len(players)}")
@@ -154,7 +156,7 @@ def load_theme(path: Path) -> Theme:
 
     if "sound" not in raw:
         die(f"{path.name}: missing sound = \"...\" (the transition sound)")
-    w = path.name
+    w = path.name   # where: for the error messages
     return Theme(
         players=tuple(players),
         sound=file(raw["sound"], "sound"),
@@ -193,7 +195,7 @@ def load_crew(path: Path) -> Crew:
     w = path.name
     _warn_unknown(raw, CREW_KEYS, w)
 
-    def gain(table, key, where):
+    def gain(table: dict, key: str, where: str) -> float:
         return _get(table, key, float, 0.0, where, lambda v: -60 <= v <= 20,
                     "between -60 and 20 (dB)")
 

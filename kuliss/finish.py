@@ -1,15 +1,16 @@
 """kuliss finish: the who-we-watch / who-talks overlay, a sound at every switch, and
 the intro and outro, added to a Kdenlive episode project.
 
-    a = analyse(project)            # reads the project, finds views and speech
-    overlay = render_overlay(a)     # draws <project>-overlay.mkv
-    backup = apply(a, overlay)      # patches the project in place
+    analysis = analyse(project)     # reads the project, finds views and speech
+    overlay = render_overlay(analysis)   # draws <project>-overlay.mkv
+    backup = apply(analysis, overlay)    # patches the project in place
 
 The theme is found next to the project or in any folder above it.
 """
 
 import math
 import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -52,28 +53,30 @@ def find_theme(project: Path) -> Path:
 
 
 def sound_frames(path: Path, fps: float) -> int:
+    """How many timeline frames a media file lasts."""
     try:
-        with av.open(str(path)) as c:
-            return max(1, math.ceil(c.duration / av.time_base * fps))
+        with av.open(str(path)) as container:
+            return max(1, math.ceil(container.duration / av.time_base * fps))
     except (av.FFmpegError, TypeError):
         die(f"cannot read {path}")
 
 
-def analyse(project: str | Path, theme: str | Path | None = None) -> Analysis:
+def analyse(project: str | Path, theme_file: str | Path | None = None) -> Analysis:
     """Read the project and work out who is on screen and who talks. Writes nothing."""
     path = Path(project).expanduser().resolve()
-    th = load_theme(Path(theme).expanduser().resolve() if theme else find_theme(path))
+    theme = load_theme(Path(theme_file).expanduser().resolve() if theme_file
+                       else find_theme(path))
     proj = timeline.load(path)
     mtime = path.stat().st_mtime_ns
     fps = proj.fps
-    here = timeline.present(proj, th.players)
+    here = timeline.present(proj, theme.players)
     if not here:
         die("no player has clips on their voice track")
-    absent = tuple(p.name for p in th.players if p not in here)
-    th = replace(th, players=here)   # whoever missed the session gets no avatar
-    players = timeline.with_sources(proj, th.players)
+    absent = tuple(p.name for p in theme.players if p not in here)
+    theme = replace(theme, players=here)   # whoever missed the session gets no avatar
+    players = timeline.with_sources(proj, theme.players)
     # load every image and font now: a bad asset should fail in a second, not after the analysis
-    painter = render.Painter(th, render.layout(th, proj.width, proj.height))
+    painter = render.Painter(theme, render.layout(theme, proj.width, proj.height))
 
     view = timeline.view_map(proj, players)
     if (view < 0).all():
@@ -83,41 +86,47 @@ def analyse(project: str | Path, theme: str | Path | None = None) -> Analysis:
             f"video clips are: {', '.join(clips)}")
     spots = timeline.bookends(proj.length, fps)
     for key in ("intro_video", "outro_image"):   # full-screen once placed: no view there,
-        if getattr(th, key):                     # on the first run as on every later one
+        if getattr(theme, key):                     # on the first run as on every later one
             start, _, n = spots[key]
             view[max(start, 0):max(start + n, 0)] = -1
     spans = timeline.view_spans(view, round(MIN_SPAN * fps))
     entries = [timeline.voice_entries(proj, p) for p in players]
     t0 = time.monotonic()
     with ThreadPoolExecutor(len(players)) as pool:
-        talking = list(pool.map(lambda e: vad.talking(e, fps, proj.length, th.speech_threshold),
+        talking = list(pool.map(lambda e: vad.talking(e, fps, proj.length, theme.speech_threshold),
                                 entries))
-    return Analysis(path, mtime, proj, th, players, absent, painter, view, spans,
+    return Analysis(path, mtime, proj, theme, players, absent, painter, view, spans,
                     timeline.cuts(spans), talking, time.monotonic() - t0)
 
 
-def render_overlay(a: Analysis, preview: float | None = None,
-                   progress=lambda done, total: None) -> Path:
+def render_overlay(analysis: Analysis, preview: float | None = None,
+                   progress: Callable[[int, int], None] = lambda done, total: None) -> Path:
     """Draw the overlay next to the project; with `preview`, only its first seconds
     (to <project>-overlay-preview.*). Returns the file."""
-    n = a.proj.length if preview is None else min(a.proj.length, round(preview * a.proj.fps))
-    ext = render.CODECS[a.theme.codec][0]
-    out = a.path.with_name(a.path.stem + ("-overlay" if preview is None else "-overlay-preview")
-                           + ext)
-    render.render(a.painter, a.theme.codec, a.spans, a.talking, a.proj.rate, n, out, progress)
+    proj, theme = analysis.proj, analysis.theme
+    frames = proj.length if preview is None else min(proj.length, round(preview * proj.fps))
+    suffix = "-overlay" if preview is None else "-overlay-preview"
+    out = analysis.path.with_name(analysis.path.stem + suffix + render.CODECS[theme.codec][0])
+    render.render(analysis.painter, theme.codec, analysis.spans, analysis.talking, proj.rate,
+                  frames, out, progress)
     return out
 
 
-def apply(a: Analysis, overlay: Path) -> Path:
+def apply(analysis: Analysis, overlay: Path) -> Path:
     """Patch the project in place with the overlay and the switch sounds. Returns the
     timestamped backup of the project as it was."""
-    proj, theme, fps = a.proj, a.theme, a.proj.fps
+    proj, theme, fps = analysis.proj, analysis.theme, analysis.proj.fps
     shift = round(theme.sound_offset * fps)
-    card = timeline.bookends(proj.length, fps)["outro_image"][2]
-    media = {k: (p, card if k == "outro_image" else sound_frames(p, fps))
-             for k in BOOKENDS if (p := getattr(theme, k))}
-    timeline.patch(proj, overlay, render.placement(theme, a.painter.lay, proj.width, proj.height),
-                   theme.sound, sound_frames(theme.sound, fps),
-                   [c + shift for c in a.cuts if 0 <= c + shift < proj.length], media,
-                   min(e.start for p in a.players for e in timeline.voice_entries(proj, p)) / fps)
-    return timeline.write(proj, a.path, a.mtime)
+    sounds_at = [cut + shift for cut in analysis.cuts if 0 <= cut + shift < proj.length]
+    card_frames = timeline.bookends(proj.length, fps)["outro_image"][2]
+    media = {}   # intro/outro key -> (file, frames), for the ones the theme names
+    for key in BOOKENDS:
+        file = getattr(theme, key)
+        if file:
+            media[key] = (file, card_frames if key == "outro_image" else sound_frames(file, fps))
+    first_voice = min(entry.start for player in analysis.players
+                      for entry in timeline.voice_entries(proj, player))
+    rect = render.placement(theme, analysis.painter.lay, proj.width, proj.height)
+    timeline.patch(proj, overlay, rect, theme.sound, sound_frames(theme.sound, fps), sounds_at,
+                   media, first_voice / fps)
+    return timeline.write(proj, analysis.path, analysis.mtime)

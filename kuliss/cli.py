@@ -25,12 +25,12 @@ REOPEN = "If it is open in Kdenlive, reopen it without saving first."
 
 def positive(text: str) -> float:
     try:
-        v = float(text)
+        seconds = float(text)
     except ValueError:
-        v = 0
-    if not v > 0:
+        seconds = 0
+    if not seconds > 0:
         raise argparse.ArgumentTypeError(f"must be a number of seconds above 0, got {text!r}")
-    return v
+    return seconds
 
 
 def _progress(done: int, total: int) -> None:
@@ -38,24 +38,24 @@ def _progress(done: int, total: int) -> None:
     print(f"\r  rendering {100 * done // max(total, 1):3d}%", end=end, flush=True)
 
 
-def _finish(a) -> int:
+def _finish(args: argparse.Namespace) -> int:
     from . import finish
-    an = finish.analyse(a.project, a.theme)
-    if an.absent:
-        print("Not in this project (no voice clips): " + ", ".join(an.absent))
-    fps = an.proj.fps
-    print(f"{an.path.name}: {an.proj.length / fps / 60:.1f} min, {len(an.cuts)} view switches")
-    print(f"  speech detected in {an.seconds:.0f} s")
-    for name, on_screen, talking in an.stats():
+    analysis = finish.analyse(args.project, args.theme)
+    if analysis.absent:
+        print("Not in this project (no voice clips): " + ", ".join(analysis.absent))
+    fps = analysis.proj.fps
+    print(f"{analysis.path.name}: {analysis.proj.length / fps / 60:.1f} min, {len(analysis.cuts)} view switches")
+    print(f"  speech detected in {analysis.seconds:.0f} s")
+    for name, on_screen, talking in analysis.stats():
         print(f"  {name:<12} on screen {on_screen:4.1f}%   talking {talking:4.1f}%")
-    if a.dry_run:
+    if args.dry_run:
         return 0
-    overlay = finish.render_overlay(an, a.preview, _progress)
-    if a.preview is not None:
+    overlay = finish.render_overlay(analysis, args.preview, _progress)
+    if args.preview is not None:
         print(f"Preview written: {overlay}")
         return 0
-    backup = finish.apply(an, overlay)
-    print(f"Updated {an.path.name} (backup: {backup.name}). {REOPEN}")
+    backup = finish.apply(analysis, overlay)
+    print(f"Updated {analysis.path.name} (backup: {backup.name}). {REOPEN}")
     return 0
 
 
@@ -67,21 +67,22 @@ def _sessions(directory: str) -> list[Path]:
     return discover(start)
 
 
-def _notes(a) -> int:
+def _notes(args: argparse.Namespace) -> int:
     from . import notes
-    sessions = _sessions(a.directory)
+    sessions = _sessions(args.directory)
     if not sessions:
-        die(f"{Path(a.directory).resolve()} is not inside a session directory and contains "
+        die(f"{Path(args.directory).resolve()} is not inside a session directory and contains "
             "no session_* directories")
-    if a.show:
-        shown = [text for s in sessions if (text := notes.show_episode(s, a.show)) is not None]
+    if args.show:
+        shown = [text for session in sessions
+             if (text := notes.show_episode(session, args.show)) is not None]
         if not shown:
-            die(f"episode {a.show!r} not found in any session file")
+            die(f"episode {args.show!r} not found in any session file")
         print(shown[0])
         return 0
     warnings = 0
-    for s in sessions:
-        res = notes.process_session(s, dry_run=a.dry_run)
+    for session in sessions:
+        res = notes.process_session(session, dry_run=args.dry_run)
         print("\n".join(res.lines))
         warnings += res.warnings
     return 1 if warnings else 0
@@ -96,10 +97,10 @@ def _prompt(question: str, default: str) -> str:
     return answer or default
 
 
-def _new(a) -> int:
+def _new(args: argparse.Namespace) -> int:
     from . import scaffold
     from .notes import SOFTWARE_DEFAULTS
-    start = Path(a.directory).resolve()
+    start = Path(args.directory).resolve()
     if not start.is_dir():
         die(f"{start} is not a directory")
     root, number = scaffold.next_session(start)
@@ -132,9 +133,9 @@ def _new(a) -> int:
     return 0
 
 
-def _sync(a) -> int:
+def _sync(args: argparse.Namespace) -> int:
     from . import session
-    sessions = _sessions(a.directory)
+    sessions = _sessions(args.directory)
     if len(sessions) != 1:
         die("run it inside one session directory, or name one")
     res = session.sync_session(sessions[0])
@@ -156,7 +157,7 @@ def parser() -> argparse.ArgumentParser:
     sub = ap.add_subparsers(dest="command", metavar="COMMAND", required=True)
 
     p = sub.add_parser("finish", help="overlay, switch sounds, intro and outro",
-                       description="Finish an episode: add the who-we-watch / who-talks overlay, "
+                       description="Finish analysis episode: add the who-we-watch / who-talks overlay, "
                        "a sound at every switch, and the intro and outro.")
     p.add_argument("project", help="the .kdenlive project to update in place")
     p.add_argument("--theme", help="theme TOML (default: theme.toml next to or above the project)")
@@ -173,7 +174,7 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--dry-run", action="store_true",
                    help="show what would change as a diff, without writing anything")
     p.add_argument("--show", metavar="EPISODE",
-                   help="print an episode's metadata and notes from the session file, then exit")
+                   help="print analysis episode's metadata and notes from the session file, then exit")
     p.set_defaults(run=_notes)
 
     p = sub.add_parser("new", help="scaffold the next session directory",
@@ -192,11 +193,11 @@ def parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    a = parser().parse_args(argv)
+    args = parser().parse_args(argv)
     # the library reports through logging; warnings go to stderr as "WARNING: ..."
     logging.basicConfig(level=logging.WARNING, format="WARNING: %(message)s", force=True)
     try:
-        return a.run(a)
+        return args.run(args)
     except VoiceError as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 1
