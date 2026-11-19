@@ -26,6 +26,11 @@ Repository = "https://github.com/seetee/kuliss"
 [project.scripts]
 kuliss = "kuliss.cli:main"
 
+[project.optional-dependencies]
+gui = [
+    "pyside6-essentials>=6.10",
+]
+
 [dependency-groups]
 dev = ["pytest>=8", "ruff>=0.8"]
 

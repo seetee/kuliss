@@ -70,9 +70,9 @@ class BootstrapTests(unittest.TestCase):
             expected_order = [
                 "# Session 26 - 2025-06-30",
                 "## Mjukvaruversioner",
-                "* Prism Launcher 9.2",
                 "* OBS 23.0.3",
                 "* Kdenlive 24.12.3",
+                "* kuliss ",
                 "## Avsnittsinfo",
                 "### avsnitt207",
                 "**Titel:**",
@@ -216,7 +216,8 @@ class RepairTests(unittest.TestCase):
             t.md.write_text("# Session 26 - 2025-06-30\n", encoding="utf-8")
             out = t.run()
             self.assertLess(out.index("## Mjukvaruversioner"), out.index("## Avsnittsinfo"))
-            self.assertIn("* Prism Launcher 9.2", out)
+            self.assertIn("* OBS 23.0.3", out)
+            self.assertEqual(out.count("* Kdenlive"), 1)  # the default line, given its version
 
     def test_software_version_line_updated_hand_lines_kept(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -560,8 +561,8 @@ class ScaffoldTests(unittest.TestCase):
             self.assertTrue((new_dir / "avsnittXX27").is_dir())
             md = (new_dir / f"{new_dir.name}.md").read_text(encoding="utf-8")
             self.assertIn(f"# Session 27 - {date.today().isoformat()}", md)
-            self.assertIn("* Prism Launcher 9.2", md)
-            self.assertIn("  * Faithful 32x", md)
+            self.assertIn("* OBS 23.0.3", md)
+            self.assertNotIn("Prism Launcher", md)  # no crew file, so no game lines
             self.assertIn("### avsnittXX27", md)
             self.assertIn("**Titel:**", md)
             from kuliss import timeline  # the project is built without a template
@@ -581,14 +582,21 @@ class ScaffoldTests(unittest.TestCase):
             with self.assertNoLogs("kuliss.scaffold", "WARNING"):
                 self._scaffold(Path(tmp))
 
+    GAME = '[software]\n"Project Ozone 3" = ["* Prism Launcher 9.2", "  * Faithful 32x"]\n'
+
+    def _crew(self, tmp):
+        (Path(tmp) / "_assets").mkdir()
+        (Path(tmp) / "_assets" / "kuliss.toml").write_text(self.GAME, encoding="utf-8")
+
     def test_prompted_date_and_software_used(self):
         with tempfile.TemporaryDirectory() as tmp:
             t = SessionTree(tmp)
             t.episode("avsnitt207", NOTEWORTHY)
+            self._crew(tmp)
             answers = (
-                ["2026-08-01"]  # date
+                ["2026-08-01", ""]  # date, the first game
                 + ["Prism Launcher 9.3"]  # replace first software line
-                + [""] * (len(kc.SOFTWARE_DEFAULTS) - 1)  # keep the rest
+                + [""] * len(kc.SOFTWARE_DEFAULTS)  # keep the rest (Faithful and the defaults)
                 + ["Handbrake 1.7", ""]  # one extra line, then finish
             )
             self._scaffold(Path(tmp), answers)
@@ -597,8 +605,23 @@ class ScaffoldTests(unittest.TestCase):
             self.assertIn("# Session 27 - 2026-08-01", md)
             self.assertIn("* Prism Launcher 9.3", md)
             self.assertNotIn("Prism Launcher 9.2", md)
+            self.assertIn("  * Faithful 32x", md)
             self.assertIn("* OBS 23.0.3", md)
             self.assertIn("* Handbrake 1.7", md)
+
+    def test_no_game_leaves_out_its_software(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            t = SessionTree(tmp)
+            t.episode("avsnitt207", NOTEWORTHY)
+            self._crew(tmp)
+            answers = ["2026-08-01", "Doom", "none"] + [""] * (len(kc.SOFTWARE_DEFAULTS) + 1)
+            out = self._scaffold(Path(tmp), answers)
+            self.assertIn("unknown game 'Doom'", out)
+            md = (Path(tmp) / "session_27_2026-08-01" / "session_27_2026-08-01.md").read_text(
+                encoding="utf-8"
+            )
+            self.assertNotIn("Prism Launcher", md)
+            self.assertIn("* kuliss ", md)
 
     def test_invalid_date_reprompted(self):
         with tempfile.TemporaryDirectory() as tmp:

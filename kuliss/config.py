@@ -71,6 +71,7 @@ class Crew:
     assets_gain: float = 0.0  # the Assets audio track (intro, outro, sounds)
     game_gain: float = 0.0  # every player's game audio track
     voice: dict[str, Mixer] = field(default_factory=dict)  # player -> their voice track
+    software: dict[str, list[str]] = field(default_factory=dict)  # game -> its .md lines
 
     def voice_of(self, name: str) -> Mixer:
         return self.voice.get(name, Mixer())
@@ -104,7 +105,7 @@ THEME_KEYS = {
 }
 PLAYER_KEYS = {"name", "colour", "avatar", "source", "voice_track"}
 CREW_FILE = Path("_assets") / "kuliss.toml"  # below the folder holding the session_* dirs
-CREW_KEYS = {"master_gain", "assets_gain", "game_gain", "voice"}
+CREW_KEYS = {"master_gain", "assets_gain", "game_gain", "voice", "software"}
 VOICE_KEYS = {"gain", "pan", "contrast"}
 CODECS = ("ffv1", "qtrle")  # ffv1: free/open, lossless; qtrle: about 20% smaller files, no faster
 
@@ -279,6 +280,16 @@ def load_crew(path: Path) -> Crew:
             ),
             contrast=_get(v, "contrast", int, 0, where, lambda c: 0 <= c <= 100, "0-100"),
         )
+    software = raw.get("software", {})
+    if not isinstance(software, dict) or not all(
+        isinstance(lines, list) and all(isinstance(line, str) for line in lines)
+        for lines in software.values()
+    ):
+        die(f'{w}: software is written as [software] with "<game>" = ["* line", ...]')
     return Crew(
-        gain(raw, "master_gain", w), gain(raw, "assets_gain", w), gain(raw, "game_gain", w), voice
+        gain(raw, "master_gain", w),
+        gain(raw, "assets_gain", w),
+        gain(raw, "game_gain", w),
+        voice,
+        software,
     )

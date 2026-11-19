@@ -44,6 +44,13 @@ def next_session(start: Path) -> tuple[Path, int]:
     return root, max(numbers) + 1
 
 
+def software_presets(root: Path) -> dict[str, list[str]]:
+    """Each game's software lines from the crew file ({} without one, quietly: kuliss new
+    warns about a missing crew file once, when it builds the project)."""
+    path = root / CREW_FILE
+    return load_crew(path).software if path.is_file() else {}
+
+
 def scaffold_session(
     root: Path, number: int, session_date: str, software_lines: list[str]
 ) -> Scaffolded:

@@ -4,10 +4,11 @@
     kuliss notes [DIR] [...]                sync Document Notes into the session .md
     kuliss new [DIR]                        scaffold the next session directory
     kuliss sync [SESSION_DIR]               put sources/*.mkv in sync on the project's tracks
+    kuliss gui [DIR]                        a window that walks through a whole session
 
 Run `kuliss COMMAND --help` for each command's options.
 
-This module is the only place that parses arguments, prints and sets exit codes; each
+This module and gui.py are the only places that parse arguments, print and set exit codes; each
 command imports its own module so `notes` and `new` never load skia, PyAV or Silero.
 """
 
@@ -19,8 +20,7 @@ from importlib.metadata import version
 from pathlib import Path
 
 from .errors import VoiceError, die
-
-REOPEN = "If it is open in Kdenlive, reopen it without saving first."
+from .steps import REOPEN, analysis_report, new_report, sync_report
 
 
 def positive(text: str) -> float:
@@ -42,15 +42,7 @@ def _finish(args: argparse.Namespace) -> int:
     from . import finish
 
     analysis = finish.analyse(args.project, args.theme)
-    if analysis.absent:
-        print("Not in this project (no voice clips): " + ", ".join(analysis.absent))
-    fps = analysis.proj.fps
-    print(
-        f"{analysis.path.name}: {analysis.proj.length / fps / 60:.1f} min, {len(analysis.cuts)} view switches"
-    )
-    print(f"  speech detected in {analysis.seconds:.0f} s")
-    for name, on_screen, talking in analysis.stats():
-        print(f"  {name:<12} on screen {on_screen:4.1f}%   talking {talking:4.1f}%")
+    print("\n".join(analysis_report(analysis)))
     if args.dry_run:
         return 0
     overlay = finish.render_overlay(analysis, args.preview, _progress)
@@ -125,9 +117,19 @@ def _new(args: argparse.Namespace) -> int:
         except ValueError:
             print(f"  invalid date {raw!r} (expected YYYY-MM-DD)")
 
+    presets = scaffold.software_presets(root)
+    lines = SOFTWARE_DEFAULTS
+    if presets:
+        games = [*presets, "none"]
+        while (
+            game := _prompt(f"Game ({' / '.join(games)}) [{games[0]}]: ", games[0])
+        ) not in games:
+            print(f"  unknown game {game!r}")
+        lines = presets.get(game, []) + SOFTWARE_DEFAULTS
+
     print("Software versions (Enter keeps the value, type to replace):")
     software = []
-    for line in SOFTWARE_DEFAULTS:
+    for line in lines:
         indent = line[: len(line) - len(line.lstrip())]
         text = line.lstrip()[2:]  # drop the '* ' bullet
         software.append(f"{indent}* {_prompt(f'  {text}: ', text)}")
@@ -135,11 +137,7 @@ def _new(args: argparse.Namespace) -> int:
         software.append(f"* {extra}")
 
     made = scaffold.scaffold_session(root, number, session_date, software)
-    if made.warning:
-        print(f"warning: {made.warning}")
-    files = f"{made.dir.name}.md" + (f", {made.project.name}" if made.project else "")
-    print(f"created {made.dir}")
-    print(f"  {made.episode}/, kortisar/, sources/, {files}")
+    print("\n".join(new_report(made)))
     print('Put the recordings in sources/, then run "kuliss sync" there.')
     return 0
 
@@ -151,17 +149,26 @@ def _sync(args: argparse.Namespace) -> int:
     if len(sessions) != 1:
         die("run it inside one session directory, or name one")
     res = session.sync_session(sessions[0])
-    print(
-        f"{res.path.name}: synced {len(res.offsets) + 1} recordings on their call audio "
-        f"in {res.seconds:.0f} s"
-    )
-    print(f"  {res.reference:<10} reference")
-    for name, (seconds, confidence) in res.offsets.items():
-        print(f"  {name:<10} {seconds:+9.2f} s   (confidence {confidence:.0f})")
-    for name, audio in res.added_tracks:
-        print(f"  added the {'audio' if audio else 'video'} track {name!r}")
-    print(f"Updated {res.path.name} (backup: {res.backup.name}). {REOPEN}")
+    print("\n".join(sync_report(res)))
     return 0
+
+
+def _gui(args: argparse.Namespace) -> int:
+    try:
+        from . import gui
+    except ModuleNotFoundError as e:
+        if not (e.name or "").startswith(("PySide6", "shiboken6")):
+            raise
+        die(
+            "the window needs PySide6, the gui extra. Reinstall with it: "
+            'uv tool install --force --editable "<your clone>[gui]", or '
+            '"kuliss[gui] @ git+https://github.com/seetee/kuliss.git"; '
+            "in a clone you can also run: uv run --extra gui kuliss gui"
+        )
+    start = Path(args.directory).expanduser().resolve() if args.directory else None
+    if start and not start.is_dir():
+        die(f"{start} is not a directory")
+    return gui.run(start)
 
 
 def parser() -> argparse.ArgumentParser:
@@ -239,6 +246,21 @@ def parser() -> argparse.ArgumentParser:
         help="the session directory, or any directory inside it (default: .)",
     )
     p.set_defaults(run=_sync)
+
+    p = sub.add_parser(
+        "gui",
+        help="a window that walks through a whole session",
+        description="Open a window with a session's steps, from new session to finished "
+        "episodes, and links to the files involved.",
+    )
+    p.add_argument(
+        "directory",
+        nargs="?",
+        default=None,
+        help="a session directory, anywhere inside one, or the folder holding them "
+        "(default: the last session opened, else .)",
+    )
+    p.set_defaults(run=_gui)
     return ap
 
 

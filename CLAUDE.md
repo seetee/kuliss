@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `kuliss` (AGPL-3.0-or-later) is a set of Kdenlive tools for the **Samkväm** let's play, run as one `kuliss` command.
 
-**API first:** `cli.py` is the only module that parses arguments, prints or sets exit codes (argparse subcommands; each imports its module lazily, so `notes`/`new` never load skia/PyAV/Silero). Everything else is a library: functions return data (`finish.analyse` → `Analysis`, `notes.process_session` → `SessionResult`, `session.sync_session` → `SyncResult`, `scaffold.scaffold_session` → `Scaffolded`), warn through `logging`, and fail with `errors.die()` → `VoiceError`. Don't add `print`, `input` or `sys.exit` outside `cli.py`.
+**API first:** `cli.py` and `gui.py` are the only front ends: the only modules that parse arguments, print, prompt or set exit codes (argparse subcommands; each imports its module lazily, so `notes`/`new` never load skia/PyAV/Silero). The report text both show after a command lives in `steps.py` (`*_report`), with `steps.state`, which reads where a session stands from disk. Everything else is a library: functions return data (`finish.analyse` → `Analysis`, `notes.process_session` → `SessionResult`, `session.sync_session` → `SyncResult`, `scaffold.scaffold_session` → `Scaffolded`), warn through `logging`, and fail with `errors.die()` → `VoiceError`. Don't add `print`, `input` or `sys.exit` outside them.
 
 It merges two former projects, `indicate-speaker` and `kdenlive-commentor`, and both histories are kept.
 
@@ -23,6 +23,7 @@ uv run kuliss notes --dry-run                   # diff preview, no writes
 uv run kuliss notes --show avsnittXXX           # print one episode's section
 uv run kuliss new                               # scaffold next session dir + its .kdenlive
 uv run kuliss sync [session dir]                # sources/*.mkv onto the project's tracks, in sync
+uv run --extra gui kuliss gui                   # the session window (PySide6 is the optional gui extra)
 uv run pytest                                   # single test: -k <name>; no media needed
 ```
 
@@ -64,7 +65,7 @@ The overlay track is named `kuliss` (`TRACK_NAME`) and the bin clips `kuliss spe
 
 `notes.py` (formerly `kdenlive_commentor.py`, stdlib only) merges timestamped notes from Kdenlive project files into a session Markdown file, repairing that file to a canonical skeleton on every run. Extraction (the `kdenlive:documentnotes` XML property) lives in `kdnotes.py`, the Markdown block model in `mdoc.py`, and `kuliss new` in `scaffold.py`; `notes.py` re-imports their names. It assumes the directory layout and session-file skeleton documented in README.md.
 
-The checklist flags YouTube pitfalls: Titel > 100 chars, chapter lists with < 3 entries. `scaffold.next_session` derives the next session number from existing `session_*` dirs; `cli._new` prompts for the recording date and software versions (`_prompt` falls back to defaults on EOF, which is what the tests use); `scaffold.scaffold_session` creates `sources/`, `kortisar/` (shorts/TikToks), a placeholder episode dir `avsnittXX<nr>` (literal `XX` — episode numbers aren't known at scaffold time), the skeleton `.md` via the `ensure_*` machinery, and (via `timeline.create_project`; `new` loads numpy but never PyAV, skia or Silero) `session_<nr>_<date>.kdenlive`, built from code since 2026-11-17 (there is no template any more): `timeline.new_project` (the `SKELETON` string, 1080p60, cut down from a Kdenlive 26.08 save) plus the two empty `Assets` tracks and the master volume. Mixer settings come from the crew file `<root>/_assets/kuliss.toml` (`config.CREW_FILE`, `load_crew` → `Crew`; see `crew.example.toml`); a missing file warns and gives 0 dB, centred. `timeline._mix` writes a track's mixer (acontrast, volume, panner) as Kdenlive does, only when the track is created.
+The checklist flags YouTube pitfalls: Titel > 100 chars, chapter lists with < 3 entries. `scaffold.next_session` derives the next session number from existing `session_*` dirs; `cli._new` prompts for the recording date and software versions (`_prompt` falls back to defaults on EOF, which is what the tests use); `scaffold.scaffold_session` creates `sources/`, `kortisar/` (shorts/TikToks), a placeholder episode dir `avsnittXX<nr>` (literal `XX` — episode numbers aren't known at scaffold time), the skeleton `.md` via the `ensure_*` machinery, and (via `timeline.create_project`; `new` loads numpy but never PyAV, skia or Silero) `session_<nr>_<date>.kdenlive`, built from code since 2026-11-17 (there is no template any more): `timeline.new_project` (the `SKELETON` string, 1080p60, cut down from a Kdenlive 26.08 save) plus the two empty `Assets` tracks and the master volume. The software lines are `notes.SOFTWARE_DEFAULTS` (OBS, Kdenlive, kuliss: every session) after the chosen game's lines from the crew file's `[software]` table (`scaffold.software_presets`; first game is the default, `none` allowed). Mixer settings come from the crew file `<root>/_assets/kuliss.toml` (`config.CREW_FILE`, `load_crew` → `Crew`; see `crew.example.toml`); a missing file warns and gives 0 dB, centred. `timeline._mix` writes a track's mixer (acontrast, volume, panner) as Kdenlive does, only when the track is created.
 
 Exit code is 1 if any warning was printed (unreadable `.kdenlive`, stale `###` section with no matching directory). Real writes are atomic and preceded by a timestamped `<name>.md.<stamp>.bak` of the previous version (`files.write_atomic`/`files.backup`, shared by every command).
 
@@ -100,6 +101,10 @@ Pipeline:
 - It creates every missing player track, grouped by kind (all Comms, all Voice, all Game, then the video tracks under `Assets`), crew in `TALLY_NAMES` order, guests last, with the crew file's mixer on Voice and Game tracks.
 - `timeline.add_source` writes a bin chain plus one timeline chain for the video and one per audio stream, the layout Kdenlive itself uses; Kdenlive re-probes the rest. Verified by rendering a synced project through `AppRun --render`.
 - `timeline.write` is the shared backup + changed-on-disk check + atomic replace (also used by `finish`).
+
+## `kuliss gui`
+
+`gui.py` (PySide6-Essentials, the optional `gui` extra; `cli._gui` says how to install it when it's missing) is one window listing a session's steps in the order of the README's session workflow. Done or not comes from `steps.state`, re-read whenever the window gets focus; nothing is stored except the last session opened (`QSettings`). Files open through `QDesktopServices` (links in `QLabel`s with `setOpenExternalLinks`), never a named program. Commands run in a `Job` (`QThread`); widgets are touched only through signals, the window is disabled while one runs and refuses to close. Library warnings reach the log pane through `LogHandler`. `steps.py` must not import Qt, so `tests/test_gui.py` tests the state without the extra; its window test skips without PySide6. CI installs the extra (plus Qt's libGL/xkbcommon/fontconfig on Linux).
 
 ## Verifying against real Kdenlive
 

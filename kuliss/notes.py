@@ -49,6 +49,7 @@ completeness checklist is printed after each run.
 import difflib
 import re
 from dataclasses import dataclass, field
+from importlib.metadata import version as package_version
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
@@ -65,16 +66,8 @@ TALLY_NAMES = [("J", "Joel"), ("R", "Robin"), ("H", "Henrik"), ("K", "Kenneth")]
 CHAPTER_OPENING = "Äventyret börjar!"
 BRYGG_PHRASE = "tar en lång promenad på en kort brygga"
 
-SOFTWARE_DEFAULTS = [
-    "* Prism Launcher 9.2",
-    "* Project Ozone 3 3.4.10",
-    "* Minecraft 1.12.2",
-    "* Resource packs",
-    "  * Faithful 32x",
-    "  * Faithful Mods - Project Ozone 3",
-    "  * Ozone Resources 3",
-    "* OBS 23.0.3",
-]
+# in every session; a game's own lines come first, from the crew file (kuliss new)
+SOFTWARE_DEFAULTS = ["* OBS 23.0.3", "* Kdenlive", f"* kuliss {package_version('kuliss')}"]
 
 _META_RE = re.compile(r"^\*\*(.+?):\*\*")
 _META_FILLED_RE = re.compile(r"^\*\*(.+?):\*\*\s*\S")
@@ -280,11 +273,7 @@ def _prune_orphan_section(episode: Block, incoming_bullets: set[str]) -> None:
 
 def _update_software(software: Block, version: str | None) -> None:
     if not any(line.strip() for line in software.lines):
-        software.lines = ["\n"] + [f"{line}\n" for line in SOFTWARE_DEFAULTS]
-        if version:
-            software.lines.append(f"* Kdenlive {version}\n")
-        software.lines.append("\n")
-        return
+        software.lines = ["\n"] + [f"{line}\n" for line in SOFTWARE_DEFAULTS] + ["\n"]
     if not version:
         return
     for i, line in enumerate(software.lines):

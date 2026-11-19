@@ -111,6 +111,22 @@ samkvam.online/
 7. **Publish:** render in Kdenlive and take the title, blurbs and `Kapitel`
    list for YouTube from the session `.md`.
 
+### The same in a window: `kuliss gui`
+
+```bash
+uv run --extra gui kuliss gui            # from a clone
+uv tool install --force "kuliss[gui] @ git+https://github.com/seetee/kuliss.git"   # or add the extra to an installed kuliss
+```
+
+The window lists the steps above for one session, with ✓ for what is done (worked out from
+the files each time the window gets focus), a button for each command, and links that open
+the session folder, `sources/`, the projects, the session `.md`, the theme and the crew file
+in your default programs (on Linux whatever `xdg-open` picks: Kate for text, Kdenlive for
+projects, Dolphin for folders). It opens the session you had last, or pass a folder:
+`kuliss gui ~/documents/samkvam.online`. Finish's *Preview 90 s* plays the preview when it is
+done. The commands are the same as on the command line; warnings and results show in the
+log at the bottom.
+
 ## `kuliss finish`: overlay, sounds, intro and outro
 
 Run it on a finished (or half-finished) Kdenlive project of a multi-player let's play. It adds a small overlay that shows:
@@ -401,6 +417,11 @@ each player's voice volume, pan and voice contrast, the game audio and
 `Assets` volumes, and the master volume. They are set when a track is created;
 change them in Kdenlive afterwards as you like. Without a crew file every
 track starts at 0 dB, centred.
+
+The crew file can also list each game's software versions under `[software]`
+(see `crew.example.toml`). `kuliss new` asks which game the session is (or none)
+and starts the notes file's `Mjukvaruversioner` with that game's lines, then OBS,
+Kdenlive and kuliss, which every session gets.
 
 ## `kuliss sync`: recordings in sync
 
