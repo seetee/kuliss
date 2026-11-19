@@ -448,6 +448,10 @@ directions, which cancels the call's delay. On session 28 it landed within
 confidence. Once you're happy with the sync, delete the `Comms` tracks' clips
 unless you need them as a backup.
 
+The clips come grouped, so they move together: all the `Voice` clips form one
+group, and each player's game video forms a group with their `Game` audio.
+Ungroup them in Kdenlive (*Timeline → Ungroup*, Ctrl+Shift+G) to move one alone.
+
 **A recording that doesn't follow the standard** doesn't stop the others. Each
 problem is a warning, and the rest is synced:
 

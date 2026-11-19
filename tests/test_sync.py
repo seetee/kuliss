@@ -1,5 +1,6 @@
 """uv run pytest   (synthetic speech: noise bursts, so no media files are needed)"""
 
+import json
 import os
 from fractions import Fraction
 from pathlib import Path
@@ -159,6 +160,14 @@ def test_sync_places_recordings_and_refuses_a_second_run(tmp_path):
     assert mixer(p, "Kenneth Voice")["volume"]["level"] == "0.0"  # not in the crew file
     assert mixer(p, "K Game")["volume"]["level"] == "-20.5"
     assert mixer(p, "J Comms") == {}
+
+    # grouped as the crew does: all Voice clips; each player's game video with its audio
+    groups = json.loads(T.props(p.seq)["kdenlive:sequenceproperties.groups"])
+    assert [(g["type"], [c["data"] for c in g["children"]]) for g in groups] == [
+        ("Normal", ["3:0:-1", "4:720:-1"]),  # Joel Voice, Kenneth Voice (no black track)
+        ("Normal", ["7:0:-1", "5:0:-1"]),  # Joel Game video, J Game
+        ("Normal", ["8:720:-1", "6:720:-1"]),  # Kenneth Game video, K Game
+    ]
 
     with pytest.raises(VoiceError, match="already has clips"):
         session.sync_session(sdir)

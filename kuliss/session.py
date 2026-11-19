@@ -205,6 +205,7 @@ def sync_session(session_dir: Path) -> SyncResult:
             tracks[name, is_audio] = None
             added.append((name, is_audio))
 
+    starts: dict[str, int] = {}
     earliest = min(offsets.values())  # whoever started recording first starts at 0
     for rec in recordings:
         bin_id, video, audio = timeline.add_source(
@@ -217,6 +218,26 @@ def sync_session(session_dir: Path) -> SyncResult:
             producer = audio[rec.streams[title]] if is_audio else video
             timeline.place(
                 project, track_name(fmt, rec), is_audio, producer, bin_id, start, rec.length
+            )
+        starts[rec.name] = start
+    # as the crew groups them: every Voice clip together, and each player's game
+    # video with its game audio, so they move as one
+    timeline.group(
+        project,
+        [
+            (track_name("{name} Voice", r), True, starts[r.name])
+            for r in recordings
+            if has(r, "Voice audio")
+        ],
+    )
+    for r in recordings:
+        if r.video and has(r, "Game audio"):
+            timeline.group(
+                project,
+                [
+                    (track_name("{name} Game", r), False, starts[r.name]),
+                    (track_name("{i} Game", r), True, starts[r.name]),
+                ],
             )
     backup = timeline.write(project, path, mtime)
     return SyncResult(path, backup, reference.name, found, added, seconds, left_out)

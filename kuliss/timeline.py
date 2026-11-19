@@ -8,6 +8,7 @@ reuses them instead of adding more.
 """
 
 import fnmatch
+import json
 import logging
 import re
 import time
@@ -1002,3 +1003,23 @@ def place(
         if tr.get("out") is not None and frames(tr.get("out"), project.fps) < end - 1:
             tr.set("out", str(end - 1))
     project.length = max(project.length, end)
+
+
+def group(project: Project, clips: list[tuple[str, bool, int]]) -> None:
+    """Group clips, given as (track name, audio?, start frame), as Kdenlive's Ctrl+G
+    does: one "Normal" group in the sequence's groups JSON, beside any already there."""
+    byid, refs = project.byid(), project.seq.findall("track")
+    index = {id(byid.get(ref.get("producer"))): i for i, ref in enumerate(refs)}
+    leaves = []
+    for name, audio, start in clips:
+        t = _find_track(project, name, audio)
+        if t is None:
+            die(f"the project has no {'audio' if audio else 'video'} track named {name!r}")
+        # Kdenlive's track numbers leave out the black track
+        leaves.append({"data": f"{index[id(t)] - 1}:{start}:-1", "leaf": "clip", "type": "Leaf"})
+    if len(leaves) < 2:  # a group of one is no group
+        return
+    key = "kdenlive:sequenceproperties.groups"
+    groups = json.loads(props(project.seq).get(key) or "[]")
+    groups.append({"children": leaves, "type": "Normal"})
+    set_prop(project.seq, key, json.dumps(groups, indent=4))
