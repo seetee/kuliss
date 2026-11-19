@@ -20,7 +20,7 @@ from importlib.metadata import version
 from pathlib import Path
 
 from .errors import VoiceError, die
-from .steps import REOPEN, analysis_report, new_report, sync_report
+from .steps import analysis_report, new_report, preview_report, sync_report, updated_report
 
 
 def positive(text: str) -> float:
@@ -47,10 +47,10 @@ def _finish(args: argparse.Namespace) -> int:
         return 0
     overlay = finish.render_overlay(analysis, args.preview, _progress)
     if args.preview is not None:
-        print(f"Preview written: {overlay}")
+        print(preview_report(overlay))
         return 0
     backup = finish.apply(analysis, overlay)
-    print(f"Updated {analysis.path.name} (backup: {backup.name}). {REOPEN}")
+    print(updated_report(analysis.path, backup))
     return 0
 
 

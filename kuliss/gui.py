@@ -414,9 +414,9 @@ class Window(QMainWindow):
             preview = PREVIEW if mode == "preview" else None
             overlay = finish.render_overlay(analysis, preview, progress)
             if preview:
-                return lines + [f"Preview written: {overlay}"], overlay
+                return lines + [steps.preview_report(overlay)], overlay
             backup = finish.apply(analysis, overlay)
-            return lines + [f"Updated {project.name} (backup: {backup.name}). {steps.REOPEN}"], None
+            return lines + [steps.updated_report(project, backup)], None
 
         self.start(f"{mode.capitalize()} {project.parent.name}", work)
 

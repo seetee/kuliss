@@ -155,8 +155,16 @@ def sync_report(res: SyncResult) -> list[str]:
     ]
     if res.left_out:
         lines.append(f"  left out (see the warnings): {', '.join(res.left_out)}")
-    lines.append(f"Updated {res.path.name} (backup: {res.backup.name}). {REOPEN}")
+    lines.append(updated_report(res.path, res.backup))
     return lines
+
+
+def preview_report(overlay: Path) -> str:
+    return f"Preview written: {overlay}"
+
+
+def updated_report(project: Path, backup: Path) -> str:
+    return f"Updated {project.name} (backup: {backup.name}). {REOPEN}"
 
 
 def analysis_report(analysis: Analysis) -> list[str]:
