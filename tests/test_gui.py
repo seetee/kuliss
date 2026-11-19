@@ -75,10 +75,13 @@ def test_window_opens_and_closes(tmp_path, monkeypatch):
     window = gui.Window(session)
     assert window.windowTitle() == f"kuliss – {session.name}"
     assert "Theme: none" in window.links.text()
+    window.show()
+    assert window.split.sizes()[1] == 0  # the log starts minimized
     window.notes(session, dry_run=True)  # nothing to merge yet: the job ends at once
     while window.job:
         app.processEvents()
     assert "no episode subdirectories found" in window.log.toPlainText()
+    assert window.split.sizes()[1] > 0  # and opens for the first output
     dialog = gui.NewSessionDialog(window, 3, {"Ozone": ["* Minecraft 1.12.2"]})
     assert dialog.answers()[1][0] == "* Minecraft 1.12.2"  # the first game by default
     dialog.findChild(gui.QComboBox).setCurrentText("None")

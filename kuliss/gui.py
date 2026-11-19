@@ -164,11 +164,13 @@ class Window(QMainWindow):
         lower_box.setContentsMargins(0, 0, 0, 0)
         lower_box.addWidget(self.bar)
         lower_box.addWidget(self.log)
-        split = QSplitter(Qt.Orientation.Vertical)
+        split = self.split = QSplitter(Qt.Orientation.Vertical)
         split.addWidget(middle)
         split.addWidget(lower)
         split.setStretchFactor(0, 3)
         split.setStretchFactor(1, 1)
+        split.setSizes([1, 0])  # the log starts minimized; its handle stays to drag it open
+        self.log_opened = False
 
         central = QWidget()
         box = QVBoxLayout(central)
@@ -412,6 +414,11 @@ class Window(QMainWindow):
     # ── output ───────────────────────────────────────────────────────────────
 
     def say(self, text: str) -> None:
+        if not self.log_opened:  # open it for the first output; after that it's yours
+            self.log_opened = True
+            top, bottom = self.split.sizes()
+            if not bottom:
+                self.split.setSizes([(top + bottom) * 3 // 4, (top + bottom) // 4])
         self.log.appendPlainText(text)
 
     def error(self, message: str) -> None:
