@@ -62,7 +62,7 @@ def test_unreadable_project_is_a_problem_not_a_crash(tmp_path):
 
 
 def test_window_opens_and_closes(tmp_path, monkeypatch):
-    pytest.importorskip("PySide6", exc_type=ImportError)  # the gui extra
+    pytest.importorskip("PySide6")  # the gui extra
     monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtCore import QSettings
     from PySide6.QtWidgets import QApplication
@@ -84,3 +84,5 @@ def test_window_opens_and_closes(tmp_path, monkeypatch):
     dialog.findChild(gui.QComboBox).setCurrentText("None")
     assert "Minecraft" not in "".join(dialog.answers()[1])
     assert window.close()
+    window.deleteLater()
+    app.shutdown()  # now, not at interpreter exit: a late teardown crashes on Linux CI
