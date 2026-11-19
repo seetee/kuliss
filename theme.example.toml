@@ -5,6 +5,7 @@
 # Image, sound and video formats and sizes: see "Making a theme" in README.md.
 sound    = "../_assets/namecard/60003__qubodup__loud-swosh-16.flac"  # plays on every view switch
 # backdrop = "backdrop.png"     # behind the avatars; omitted = dark translucent panel
+#                               # (backdrop.example.png in the repo: 900 x 350, to start from)
 # font     = "../_assets/Monocraft.otf"   # omitted = system sans-serif bold
 # position = "top-left"         # a corner: top-left | top-right | bottom-left | bottom-right
 #                               # or an edge centre: top | bottom | left | right

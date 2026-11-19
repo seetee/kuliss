@@ -204,7 +204,7 @@ The intro and outro timings are the ones Samkväm used by hand, so music made fo
 | 64 | 400 × 156 | 336 × 96 | 133 × 576 | 96 × 336 |
 | 96 | 600 × 234 | 504 × 144 | 198 × 864 | 144 × 504 |
 
-So for the default look a 900 × 350 px backdrop is plenty. If the panel's shape differs from the picture's, the edges are cropped, never stretched.
+So for the default look a 900 × 350 px backdrop is plenty; `backdrop.example.png` is one to start from. If the panel's shape differs from the picture's, the edges are cropped, never stretched.
 
 ### How it decides
 
