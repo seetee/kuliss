@@ -227,6 +227,9 @@ class Window(QMainWindow):
     def refresh(self) -> None:
         if self.job:  # a command is writing; its end refreshes
             return
+        if self.session and not self.session.is_dir():  # moved away, e.g. to the archive
+            self.open(self.root if self.root.is_dir() else Path.home())
+            return
         grid_widget = QWidget()
         grid = QGridLayout(grid_widget)
         grid.setColumnStretch(2, 1)

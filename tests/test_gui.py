@@ -106,6 +106,9 @@ def test_window_opens_and_closes(tmp_path, monkeypatch):
     assert dialog.answers()[2][0] == "* Minecraft 1.12.2"  # the first game by default
     dialog.findChild(gui.QComboBox).setCurrentText("None")
     assert "Minecraft" not in "".join(dialog.answers()[2])
+    session.rename(tmp_path / "archived")  # moved off while the window is open
+    window.refresh()
+    assert window.session == tmp_path / "session_1_2025-01-01"  # the newest one left
     assert window.close()
     window.deleteLater()
     app.shutdown()  # now, not at interpreter exit: a late teardown crashes on Linux CI
