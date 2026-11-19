@@ -69,6 +69,9 @@ Decided:
     track.
   - One show folder with `_assets/`; no `.kuliss` folder.
   - No `relink` command.
+- 2026-11-19:
+  - Game software lines live in the crew file's `[software]`; no stream-name aliases in sync.
+  - No waveform pre-render in sync (it would copy Kdenlive's undocumented cache format).
 
 ## For Kenneth to judge
 
@@ -108,9 +111,12 @@ Built as proposed (`gui.py`, `steps.py`, `tests/test_gui.py`). Still to do:
 
 ## `kuliss sync` and `kuliss new` (added 2026-10-30)
 
-- [ ] First real run: when session 29's recordings are in `sources/`, run `kuliss sync`, open
-      the project in the Kdenlive GUI and check each clip plays the right audio stream. So far
-      only verified on synthetic recordings and through `AppRun --render`.
+- [ ] **Session 29 (real).** It was synced before grouping and slimmed-down tracks existed
+      (2026-11-19). Clear the recordings' tracks and run `kuliss sync` again, then check in
+      Kdenlive: each clip plays the right audio stream, the sync by ear (Joel, Kenneth and
+      Robin have no `Comms`, so they are synced one way), the groups, and that every track is
+      slimmed down. The folder says 2025-12-31 but the recordings 2025-11-22: rename it if
+      the date is wrong.
 - [ ] First real guest `.mkv`: check that the created guest tracks look right in the GUI.
 - [ ] Known limits, fix only if they bite: re-syncing after clearing the tracks adds the files
       to the bin again (`timeline.add_source`); guest names with a hyphen or space
