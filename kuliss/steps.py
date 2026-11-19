@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 
 from .config import crew_file, nearest_theme
 from .errors import VoiceError
-from .notes import EPISODE_PREFIX, _natural_key, episodes, is_session_dir
+from .notes import EPISODE_PREFIX, _locate_session_file, discover, episodes
 
 if TYPE_CHECKING:  # heavy modules; only their results are formatted here
     from .finish import Analysis
@@ -32,7 +32,6 @@ class Episode:
 @dataclass
 class State:
     session: Path
-    root: Path  # the folder holding the session_* dirs
     project: Path  # the session's own .kdenlive
     md: Path
     recordings: list[str]  # sources/*.mkv names
@@ -57,11 +56,8 @@ class State:
 
 def pick_session(start: Path) -> Path | None:
     """The session `start` is in, else the newest session_* under it."""
-    for candidate in (start, *start.parents):
-        if is_session_dir(candidate):
-            return candidate
-    children = [d for d in start.iterdir() if d.is_dir() and d.name.startswith("session_")]
-    return max(children, key=lambda d: _natural_key(d.name), default=None)
+    found = discover(start)  # in natural order, so the newest is last
+    return found[-1] if found else None
 
 
 def _load(project: Path, problems: list[str]):
@@ -94,12 +90,11 @@ def markers(project) -> list[tuple[str, int]]:
 def state(session: Path) -> State:
     from .timeline import OLD_TRACK_NAME, TRACK_NAME
 
-    md = next(iter(sorted(session.glob("session_*.md"))), session / f"{session.name}.md")
+    md = _locate_session_file(session)[0]  # as kuliss notes finds it (an old .txt too)
     project = session / f"{session.name}.kdenlive"
     sources = session / "sources"
     s = State(
         session=session,
-        root=session.parent,
         project=project,
         md=md,
         recordings=sorted(p.name for p in sources.glob("*.mkv")) if sources.is_dir() else [],
