@@ -78,12 +78,6 @@ Decided:
 - [ ] `session_28_2025-10-24/avsnitt224/avsnittXX28.kdenlive` is now found without a rename
       (an `avsnitt*` folder with exactly one `.kdenlive`). Renaming it is still tidier.
 
-## Keep the editor's own changes on re-run
-
-- [ ] Check in the Kdenlive GUI that a save keeps the `kuliss:rect` property on the overlay's
-      Transform effect. If it is dropped, a moved overlay is reset on re-run, as before
-      2026-11-11; then compare against the theme's rect stored elsewhere (the bin clip).
-
 ## Speed and memory
 
 - [ ] Rendering is ~90% FFV1 encoding (about 1.2 ms per 800x450 frame at 16 slices). The only
@@ -98,9 +92,6 @@ Decided:
 
 - [ ] Privacy: use generic player names and paths in `CLAUDE.md`, `theme.example.toml` and the
       tests, instead of the crew's names and `~/documents/samkvam.online`/`~/bin/gearlever_*`.
-- [ ] `ruff format`: `notes.py`, `mdoc.py`, `kdnotes.py` use single quotes, the rest double.
-      One formatting-only commit, when nothing else is in flight.
-
 ## `kuliss sync` and `kuliss new` (added 2026-10-30)
 
 - [ ] First real run: when session 29's recordings are in `sources/`, run `kuliss sync`, open
