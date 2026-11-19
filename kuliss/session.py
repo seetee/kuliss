@@ -16,7 +16,7 @@ from pathlib import Path
 import av
 
 from . import sync, timeline
-from .config import CREW_FILE, Mixer, load_crew
+from .config import Mixer, crew_file, load_crew
 from .errors import VoiceError, die
 from .notes import TALLY_NAMES
 
@@ -182,7 +182,7 @@ def sync_session(session_dir: Path) -> SyncResult:
 
     # tracks first, grouped like the former template: all Comms, all Voice, all Game;
     # crew in TALLY_NAMES order, guests last
-    crew = load_crew(session_dir.parent / CREW_FILE)
+    crew = load_crew(crew_file(session_dir))
     crew_order = [initial for initial, _ in TALLY_NAMES]
 
     def rank(rec: Recording) -> int:

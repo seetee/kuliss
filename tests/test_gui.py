@@ -7,6 +7,7 @@ import pytest
 
 from kuliss import scaffold, steps
 from kuliss import timeline as T
+from kuliss.errors import VoiceError
 
 
 def _session(tmp_path):
@@ -22,7 +23,7 @@ def test_state_follows_the_session_workflow(tmp_path):
 
     s = steps.state(session)
     assert (s.recordings, s.synced, s.episodes, s.marked) == ([], False, [], False)
-    assert s.md.name == "session_2_2025-02-01.md" and s.project.is_file()
+    assert s.md.name == "session_02_2025-02-01.md" and s.project.is_file()
 
     (session / "sources" / "2025-02-01_K.mkv").touch()
     assert steps.state(session).recordings == ["2025-02-01_K.mkv"]
@@ -44,7 +45,7 @@ def test_state_follows_the_session_workflow(tmp_path):
     assert steps.clock(90000, s.fps) == "0:25:00"
 
     # the placeholder folder renamed to the first episode, with its copy of the project
-    (session / "avsnittXX2").rename(session / "avsnitt230")
+    (session / "avsnittXX02").rename(session / "avsnitt230")
     shutil.copy(s.project, session / "avsnitt230" / "avsnitt230.kdenlive")
     s = steps.state(session)
     first = s.episodes[0]
@@ -107,3 +108,30 @@ def test_window_opens_and_closes(tmp_path, monkeypatch):
     assert window.close()
     window.deleteLater()
     app.shutdown()  # now, not at interpreter exit: a late teardown crashes on Linux CI
+
+
+def test_game_folders_share_the_show_crew_file(tmp_path, caplog):
+    """show/_assets/kuliss.toml serves every game; each game folder has its own theme."""
+    (tmp_path / "_assets").mkdir()
+    (tmp_path / "_assets" / "kuliss.toml").write_text(
+        'master_gain = 3.0\n[software]\n"Blue Prince" = ["* Blue Prince 1.0"]\n', encoding="utf-8"
+    )
+    game = tmp_path / "blue_prince"
+    game.mkdir()
+    with pytest.raises(VoiceError, match="give it a folder with its theme.toml"):
+        scaffold.next_session(game)
+    with pytest.raises(VoiceError, match="Run it in a game's folder"):
+        scaffold.next_session(tmp_path)  # the show folder itself
+    (game / "theme.toml").write_text("", encoding="utf-8")
+    root, number = scaffold.next_session(game)
+    assert (root, number) == (game, 1)
+    assert scaffold.software_presets(root) == {"Blue Prince": ["* Blue Prince 1.0"]}
+    made = scaffold.scaffold_session(root, number, "2026-01-02", ["* OBS 32"])
+    assert made.dir == game / "session_01_2026-01-02" and made.episode == "avsnittXX01"
+    assert "no crew file" not in caplog.text
+    master = {
+        T.props(f)["mlt_service"]: T.props(f) for f in T.load(made.project).seq.findall("filter")
+    }
+    assert master["volume"]["level"] == "3.0"  # the show's crew file, two folders up
+    assert steps.state(made.dir).crew_file == tmp_path / "_assets" / "kuliss.toml"
+    assert scaffold.next_session(made.dir) == (game, 2)

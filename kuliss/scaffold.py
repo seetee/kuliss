@@ -5,7 +5,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from .config import CREW_FILE, load_crew, nearest_theme
+from .config import crew_file, load_crew, nearest_theme
 from .errors import VoiceError, die
 from .files import write_atomic
 from .mdoc import parse_doc, render_doc
@@ -32,7 +32,8 @@ class Scaffolded:
 
 def next_session(start: Path) -> tuple[Path, int]:
     """(the folder holding the session_* dirs, the next session number), from
-    anywhere in or above a session tree."""
+    anywhere in or above a session tree. A game folder with its theme.toml but no
+    sessions yet starts at 1."""
     root = next((c.parent for c in (start, *start.parents) if is_session_dir(c)), start)
     numbers = [
         int(m[1])
@@ -40,14 +41,19 @@ def next_session(start: Path) -> tuple[Path, int]:
         if d.is_dir() and (m := re.match(r"^session_(\d+)_", d.name))
     ]
     if not numbers:
-        die(f"no session_* directories in {root} to base the new session on")
+        if not (root / "theme.toml").is_file():
+            die(
+                f"no session_* folders in {root}. Run it in a game's folder (e.g. po3/); "
+                "to start a new game, give it a folder with its theme.toml first"
+            )
+        return root, 1
     return root, max(numbers) + 1
 
 
 def software_presets(root: Path) -> dict[str, list[str]]:
     """Each game's software lines from the crew file ({} without one, quietly: kuliss new
     warns about a missing crew file once, when it builds the project)."""
-    path = root / CREW_FILE
+    path = crew_file(root)
     return load_crew(path).software if path.is_file() else {}
 
 
@@ -56,13 +62,13 @@ def scaffold_session(
 ) -> Scaffolded:
     """Create session_<number>_<date>/ with sources/, kortisar/ (shorts/TikToks), an
     avsnittXX<number> placeholder episode (episode numbers aren't known yet), the
-    skeleton .md and the session's Kdenlive project (mixer levels: <root>/_assets/kuliss.toml)."""
-    name = f"session_{number}_{session_date}"
+    skeleton .md and the session's Kdenlive project (mixer levels: the crew file)."""
+    name = f"session_{number:02d}_{session_date}"
     session_dir = root / name
     if session_dir.exists():
         die(f"{session_dir} already exists")
 
-    episode = f"{EPISODE_PREFIX}XX{number}"
+    episode = f"{EPISODE_PREFIX}XX{number:02d}"
     (session_dir / "sources").mkdir(parents=True)
     (session_dir / "kortisar").mkdir()
     (session_dir / episode).mkdir()
@@ -85,7 +91,7 @@ def scaffold_session(
 
     project, warning = session_dir / f"{name}.kdenlive", None
     try:
-        create_project(project, load_crew(root / CREW_FILE))
+        create_project(project, load_crew(crew_file(root)))
     except VoiceError as e:
         project, warning = None, f"no Kdenlive project created: {e}"
     return Scaffolded(session_dir, episode, project, warning)

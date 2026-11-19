@@ -362,7 +362,7 @@ class Window(QMainWindow):
                 else f'Theme: none (see <a href="{REPO}/blob/main/theme.example.toml">'
                 "theme.example.toml</a>)",
                 link(s.crew_file, "Crew file (mixer, game software)"),
-                link(s.root / "_assets", "_assets/ folder"),
+                link(s.crew_file.parent, "_assets/ folder"),
             ]
             mine = [
                 link(s.session, "Folder"),

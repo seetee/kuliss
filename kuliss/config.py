@@ -104,7 +104,7 @@ THEME_KEYS = {
     *BOOKENDS,
 }
 PLAYER_KEYS = {"name", "colour", "avatar", "source", "voice_track"}
-CREW_FILE = Path("_assets") / "kuliss.toml"  # below the folder holding the session_* dirs
+CREW_FILE = Path("_assets") / "kuliss.toml"  # in the show folder, above every game folder
 CREW_KEYS = {"master_gain", "assets_gain", "game_gain", "voice", "software"}
 VOICE_KEYS = {"gain", "pan", "contrast"}
 CODECS = ("ffv1", "qtrle")  # ffv1: free/open, lossless; qtrle: about 20% smaller files, no faster
@@ -134,12 +134,20 @@ def _get(
     return value
 
 
+def _nearest(start: Path, name: Path | str) -> Path | None:
+    return next((d / name for d in (start, *start.parents) if (d / name).is_file()), None)
+
+
 def nearest_theme(start: Path) -> Path | None:
-    """theme.toml in `start` or the nearest folder above it: one in the folder holding
-    the session_* dirs serves every session; a session's own one wins."""
-    return next(
-        (d / "theme.toml" for d in (start, *start.parents) if (d / "theme.toml").is_file()), None
-    )
+    """theme.toml in `start` or the nearest folder above it: the game folder's serves
+    every session of that game; a session's own one wins."""
+    return _nearest(start, "theme.toml")
+
+
+def crew_file(start: Path) -> Path:
+    """The crew file in `start` or the nearest folder above it (the show folder);
+    where it would be, next to `start`, if there is none."""
+    return _nearest(start, CREW_FILE) or start / CREW_FILE
 
 
 def load_theme(path: Path) -> Theme:

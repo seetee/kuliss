@@ -65,30 +65,35 @@ One folder holds the whole show, for Samkväm `samkvam.online/`. It is the unit 
 
 ```
 samkvam.online/
-├── theme.toml              the main game's theme (kuliss finish)
-├── _assets/                everything shared between sessions
-│   ├── kuliss.toml         the crew file: track mixer levels (kuliss new, sync)
+├── _assets/                everything shared between games and sessions
+│   ├── kuliss.toml         the crew file: mixer levels, each game's software (kuliss new, sync)
 │   ├── avatars/            one picture per player
 │   ├── episode-media/      intro and outro music and video
 │   ├── design-system/      outro card, logos, fonts
 │   └── namecard/, …        switch sound, namecards, title cards, green screens
-└── session_28_2025-10-24/
-    ├── theme.toml          only when this session plays another game
-    ├── session_28_2025-10-24.md
-    ├── session_28_2025-10-24.kdenlive
-    ├── sources/            the raw recordings
-    └── avsnitt228/avsnitt228.kdenlive
+├── po3/                    one folder per game: the main series
+│   ├── theme.toml          this game's theme (kuliss finish)
+│   └── session_28_2025-10-24/
+│       ├── session_28_2025-10-24.md
+│       ├── session_28_2025-10-24.kdenlive
+│       ├── sources/        the raw recordings
+│       └── avsnitt228/avsnitt228.kdenlive
+└── blue_prince/            another game, numbered from 01
+    ├── theme.toml
+    └── session_01_2026-01-02/
+        └── avsnitt01/avsnitt01.kdenlive
 ```
 
-- **Shared files go in `_assets/`**, never in a session folder or elsewhere on the disk. That is where kuliss looks for the crew file, and themes point into it.
-- **A theme uses paths relative to itself**, such as `_assets/avatars/kenneth.png`, so it keeps working wherever the show folder lands, on Linux or Windows.
+- **One folder per game**, each with its own `theme.toml` and its own session numbers. Run `kuliss new` inside the game's folder; a new game's first session is `session_01` once its folder has a `theme.toml`. A session can still have its own `theme.toml` (the nearest one wins).
+- **Shared files go in `_assets/`** in the show folder, never in a game or session folder or elsewhere on the disk. kuliss finds the crew file there from any game, and themes point into it (`../_assets/…` from a game folder).
+- **A theme uses paths relative to itself**, such as `../_assets/avatars/kenneth.png`, so it keeps working wherever the show folder lands, on Linux or Windows.
 - **kuliss's own clips repair themselves:** the overlay, switch sounds, intro and outro get their current path on every run of `kuliss finish`.
 - **Kdenlive stores full paths** (`/home/kenneth/documents/samkvam.online/_assets/…`) for clips outside the project's own folder, such as namecards placed by hand. On another computer Kdenlive reports them missing when the project opens; let its dialog search the show folder to find them again.
 
 ## Session workflow
 
-1. **Before recording:** in the folder that holds the `session_*` folders, run
-   `kuliss new`. Give the recording date and software versions; it creates
+1. **Before recording:** in the game's folder (the one holding its `session_*`
+   folders, e.g. `po3/`), run `kuliss new`. Give the recording date and software versions; it creates
    `session_<nr>_<date>/` with its `.md`, its Kdenlive project and `sources/`.
 2. **After recording:** everyone's OBS `.mkv` goes into `sources/`, named
    `<date>_<initial>.mkv` (guests `<date>_<name>.mkv`).

@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .config import CREW_FILE, nearest_theme
+from .config import crew_file, nearest_theme
 from .errors import VoiceError
 from .notes import EPISODE_PREFIX, _natural_key, episodes, is_session_dir
 
@@ -48,7 +48,7 @@ class State:
 
     @property
     def crew_file(self) -> Path:
-        return self.root / CREW_FILE
+        return crew_file(self.session)
 
     @property
     def marked(self) -> bool:
