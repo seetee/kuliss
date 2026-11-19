@@ -53,14 +53,16 @@ contrast = 33
 """
 
 
-def recording(path, voice, comms, seconds):
-    """An .mkv laid out like the crew's OBS recordings (Full mix, Game, Voice, Comms)."""
+def recording(path, voice, comms, seconds, drop=()):
+    """An .mkv laid out like the crew's OBS recordings (Full mix, Game, Voice, Comms),
+    without the streams titled in `drop`."""
     sr = 8000
     noise = RNG.standard_normal(seconds * sr).astype(np.float32) * 0.3
     voice, comms = (
         np.repeat(e, sr // sync.ENV_RATE)[: seconds * sr] * noise for e in (voice, comms)
     )
     tracks = {"Full mix": voice, "Game audio": noise * 0.01, "Voice audio": voice, "Comms": comms}
+    tracks = {title: pcm for title, pcm in tracks.items() if title not in drop}
     with av.open(str(path), "w") as c:
         vs = c.add_stream("ffv1", rate=1)
         vs.width, vs.height, vs.pix_fmt = 16, 16, "yuv420p"
@@ -162,8 +164,8 @@ def test_sync_places_recordings_and_refuses_a_second_run(tmp_path):
         session.sync_session(sdir)
 
 
-def test_recording_without_the_standard_streams_is_refused(tmp_path):
-    sdir, _ = make_session(tmp_path)
+def test_unusable_recording_is_skipped_and_the_rest_synced(tmp_path, caplog):
+    sdir, project = make_session(tmp_path)
     bad = sdir / "sources" / "2026-10-30_r.mkv"
     with av.open(str(bad), "w") as c:
         st = c.add_stream("pcm_s16le", rate=8000, layout="mono")
@@ -172,8 +174,43 @@ def test_recording_without_the_standard_streams_is_refused(tmp_path):
         f.sample_rate, f.pts, f.time_base = 8000, 0, Fraction(1, 8000)
         c.mux(st.encode(f))
         c.mux(st.encode(None))
-    with pytest.raises(VoiceError, match="titled Comms, Voice audio, Game audio"):
-        session.sync_session(sdir)
+    (sdir / "sources" / "2026-10-30_h.mkv").write_bytes(b"not a video")
+    result = session.sync_session(sdir)
+    assert "2026-10-30_r.mkv: no audio stream titled Voice audio or Comms" in caplog.text
+    assert "2026-10-30_h.mkv: cannot read it" in caplog.text
+    assert list(result.offsets) == ["Kenneth"]
+    assert result.left_out == ["2026-10-30_h.mkv", "2026-10-30_r.mkv"]
+    assert not any(
+        t.name.startswith(("R ", "Robin", "H ", "Henrik")) for t in T.load(project).tracks
+    )
+
+
+def test_missing_comms_syncs_one_way_and_gets_no_comms_track(tmp_path, caplog):
+    sdir, project = make_session(tmp_path)
+    k = sdir / "sources" / "2026-10-30_k.mkv"
+    j, kk = bursts(120), bursts(120)
+    for f in (sdir / "sources").glob("*.mkv"):
+        f.unlink()
+    recording(sdir / "sources" / "2026-10-30_j.mkv", j[:9000], kk[:9000], 90)
+    recording(k, kk[1200:10200], j[1200:10200], 90, drop=("Comms", "Game audio"))
+    result = session.sync_session(sdir)
+    assert result.reference == "Joel"  # the one with both streams
+    assert round(result.offsets["Kenneth"][0], 1) == 12.0
+    assert "2026-10-30_k.mkv: no Comms, Game audio" in caplog.text
+    assert "Kenneth: synced one way only" in caplog.text
+    names = {t.name for t in T.load(project).tracks}
+    assert {"Kenneth Voice", "Kenneth Game", "J Comms"} <= names
+    assert not names & {"K Comms", "K Game"}
+
+
+def test_unmatched_recording_is_left_out(tmp_path, caplog):
+    sdir, project = make_session(tmp_path)
+    stranger = bursts(120)
+    recording(sdir / "sources" / "2026-10-30_r.mkv", stranger[:9000], stranger[:9000], 90)
+    result = session.sync_session(sdir)
+    assert result.left_out == ["2026-10-30_r.mkv"]
+    assert "Robin: cannot find their voice" in caplog.text
+    assert "Robin Voice" not in {t.name for t in T.load(project).tracks}
 
 
 def test_two_recordings_of_one_player_are_refused(tmp_path):

@@ -445,8 +445,17 @@ The streams are found by title, not by position. Syncing listens for each
 person's voice in the others' `Comms` (the call as they heard it), in both
 directions, which cancels the call's delay. On session 28 it landed within
 0.15 s of the hand sync even in one direction. It prints each offset with a
-confidence and stops if a recording can't be matched. Once you're happy with
-the sync, delete the `Comms` tracks' clips unless you need them as a backup.
+confidence. Once you're happy with the sync, delete the `Comms` tracks' clips
+unless you need them as a backup.
+
+**A recording that doesn't follow the standard** doesn't stop the others. Each
+problem is a warning, and the rest is synced:
+
+* A missing stream or video gets no track. Without `Comms` the recording is
+  synced one way only (its voice in the others' `Comms`), so it may be a
+  fraction of a second late; check it by ear.
+* A file with neither `Voice audio` nor `Comms`, a file that can't be read, or
+  one whose voice isn't found in the call audio is left out. Place it by hand.
 
 **Someone missing?** Sync whoever recorded; the absent player gets no
 tracks. `kuliss finish` leaves anyone without clips on their voice track out

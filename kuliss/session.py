@@ -17,7 +17,7 @@ import av
 
 from . import sync, timeline
 from .config import CREW_FILE, Mixer, load_crew
-from .errors import die
+from .errors import VoiceError, die
 from .notes import TALLY_NAMES
 
 log = logging.getLogger(__name__)
@@ -38,8 +38,9 @@ class Recording:
     path: Path
     initial: str
     name: str
-    streams: dict[str, int]  # title -> stream index
+    streams: dict[str, int]  # title -> stream index, only the TITLES it has
     length: int  # frames
+    video: bool = True
 
 
 @dataclass
@@ -50,10 +51,12 @@ class SyncResult:
     offsets: dict[str, tuple[float, float]]  # name -> (s after the reference, confidence)
     added_tracks: list[tuple[str, bool]] = field(default_factory=list)  # (name, audio?)
     seconds: float = 0.0  # analysis time
+    left_out: list[str] = field(default_factory=list)  # files not placed (see the warnings)
 
 
 def probe(path: Path, fps: float) -> Recording | None:
-    """Who a recording belongs to (from its file name) and where its streams are."""
+    """Who a recording belongs to (from its file name) and where its streams are; None
+    (with a warning) for a file that can't be used. A missing stream only warns."""
     match = re.search(r"_([^\W\d_]+)$", path.stem)
     tag = match[1] if match else ""
     if tag.upper() in NAMES:
@@ -72,17 +75,27 @@ def probe(path: Path, fps: float) -> Recording | None:
         return None
     try:
         with av.open(str(path)) as container:
-            streams = {s.metadata.get("title"): s.index for s in container.streams.audio}
-            missing = [title for title in TITLES if title not in streams]
-            if missing or not container.streams.video:
-                die(
-                    f"{path.name}: needs a video stream and audio streams titled "
-                    f"{', '.join(TITLES)}; it has {', '.join(map(str, streams)) or 'no audio'}"
-                )
+            titles = {s.metadata.get("title"): s.index for s in container.streams.audio}
+            video = bool(container.streams.video)
             length = math.ceil(container.duration / av.time_base * fps)
     except (av.FFmpegError, TypeError) as e:
-        die(f"cannot read {path}: {e}")
-    return Recording(path, initial, name, streams, length)
+        log.warning("%s: cannot read it (%s); skipped", path.name, e)
+        return None
+    streams = {title: titles[title] for title in TITLES if title in titles}
+    has = ", ".join(map(str, titles)) or "no audio"
+    if "Voice audio" not in streams and "Comms" not in streams:
+        log.warning(
+            "%s: no audio stream titled Voice audio or Comms to sync on (it has %s); skipped",
+            path.name,
+            has,
+        )
+        return None
+    missing = [title for title in TITLES if title not in streams] + ([] if video else ["video"])
+    if missing:
+        log.warning(
+            "%s: no %s (it has %s), so no track for that", path.name, ", ".join(missing), has
+        )
+    return Recording(path, initial, name, streams, length, video)
 
 
 def track_name(fmt: str, rec: Recording) -> str:
@@ -98,13 +111,15 @@ def sync_session(session_dir: Path) -> SyncResult:
     mtime = path.stat().st_mtime_ns
     project = timeline.load(path)
 
-    recordings = []
+    recordings, left_out = [], []
     for file in sorted((session_dir / "sources").glob("*.mkv")):
         rec = probe(file, project.fps)
-        if rec is not None:
+        if rec is None:
+            left_out.append(file.name)
+        else:
             recordings.append(rec)
     if not recordings:
-        die(f"no recordings in {session_dir / 'sources'}")
+        die(f"no usable recordings in {session_dir / 'sources'} (see the warnings)")
     files_of: dict[str, list[str]] = {}
     for rec in recordings:
         files_of.setdefault(rec.name, []).append(rec.path.name)
@@ -127,7 +142,12 @@ def sync_session(session_dir: Path) -> SyncResult:
 
     # loudness envelopes of everyone's own voice and call audio, decoded in parallel
     started = time.monotonic()
-    jobs = [(rec, title) for rec in recordings for title in ("Voice audio", "Comms")]
+    jobs = [
+        (rec, title)
+        for rec in recordings
+        for title in ("Voice audio", "Comms")
+        if title in rec.streams
+    ]
     with ThreadPoolExecutor(len(jobs)) as pool:
         results = pool.map(
             lambda job: sync.envelope(str(job[0].path), job[0].streams[job[1]]), jobs
@@ -135,18 +155,29 @@ def sync_session(session_dir: Path) -> SyncResult:
         envelopes = {
             (rec.name, title): env for (rec, title), env in zip(jobs, results, strict=True)
         }
-    reference = recordings[0]  # the clock everyone else is measured against
+    # the clock everyone else is measured against: best one with both streams to sync on
+    reference = next(
+        (r for r in recordings if {"Voice audio", "Comms"} <= r.streams.keys()), recordings[0]
+    )
     offsets = {reference.name: 0.0}
     found: dict[str, tuple[float, float]] = {}
-    for rec in recordings[1:]:
-        found[rec.name] = sync.offset(
-            envelopes[reference.name, "Voice audio"],
-            envelopes[reference.name, "Comms"],
-            envelopes[rec.name, "Voice audio"],
-            envelopes[rec.name, "Comms"],
-            rec.name,
-        )
+    for rec in recordings:
+        if rec is reference:
+            continue
+        try:
+            found[rec.name] = sync.offset(
+                envelopes.get((reference.name, "Voice audio")),
+                envelopes.get((reference.name, "Comms")),
+                envelopes.get((rec.name, "Voice audio")),
+                envelopes.get((rec.name, "Comms")),
+                rec.name,
+            )
+        except VoiceError as e:  # one bad file shouldn't stop the others
+            log.warning("%s; %s left out, place it by hand", e, rec.path.name)
+            left_out.append(rec.path.name)
+            continue
         offsets[rec.name] = found[rec.name][0]
+    recordings = [r for r in recordings if r.name in offsets]
     seconds = time.monotonic() - started
 
     # tracks first, grouped like the former template: all Comms, all Voice, all Game;
@@ -161,7 +192,7 @@ def sync_session(session_dir: Path) -> SyncResult:
     for fmt, is_audio, title in TRACKS:
         for rec in sorted(recordings, key=rank):
             name = track_name(fmt, rec)
-            if (name, is_audio) in tracks:
+            if (name, is_audio) in tracks or not has(rec, title):
                 continue
             mixer = {
                 "Voice audio": crew.voice_of(rec.name),
@@ -177,13 +208,20 @@ def sync_session(session_dir: Path) -> SyncResult:
     earliest = min(offsets.values())  # whoever started recording first starts at 0
     for rec in recordings:
         bin_id, video, audio = timeline.add_source(
-            project, rec.path, rec.length, [rec.streams[title] for title in TITLES]
+            project, rec.path, rec.length, list(rec.streams.values())
         )
         start = round((offsets[rec.name] - earliest) * project.fps)
         for fmt, is_audio, title in TRACKS:
+            if not has(rec, title):
+                continue
             producer = audio[rec.streams[title]] if is_audio else video
             timeline.place(
                 project, track_name(fmt, rec), is_audio, producer, bin_id, start, rec.length
             )
     backup = timeline.write(project, path, mtime)
-    return SyncResult(path, backup, reference.name, found, added, seconds)
+    return SyncResult(path, backup, reference.name, found, added, seconds, left_out)
+
+
+def has(rec: Recording, title: str | None) -> bool:
+    """Whether the recording has the stream a TRACKS entry needs (None: the video)."""
+    return rec.video if title is None else title in rec.streams

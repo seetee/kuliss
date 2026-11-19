@@ -123,6 +123,8 @@ def sync_report(res: SyncResult) -> list[str]:
         f"  added the {'audio' if audio else 'video'} track {name!r}"
         for name, audio in res.added_tracks
     ]
+    if res.left_out:
+        lines.append(f"  left out (see the warnings): {', '.join(res.left_out)}")
     lines.append(f"Updated {res.path.name} (backup: {res.backup.name}). {REOPEN}")
     return lines
 
