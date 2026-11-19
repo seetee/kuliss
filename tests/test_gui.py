@@ -1,3 +1,4 @@
+import json
 import os
 import shutil
 import time
@@ -20,19 +21,36 @@ def test_state_follows_the_session_workflow(tmp_path):
     assert steps.pick_session(session / "sources") == session
 
     s = steps.state(session)
-    assert (s.recordings, s.synced, s.episodes, s.cut) == ([], False, [], False)
+    assert (s.recordings, s.synced, s.episodes, s.marked) == ([], False, [], False)
     assert s.md.name == "session_2_2025-02-01.md" and s.project.is_file()
 
     (session / "sources" / "2025-02-01_K.mkv").touch()
     assert steps.state(session).recordings == ["2025-02-01_K.mkv"]
 
-    # the placeholder episode gets a project, then is renamed: cut
-    shutil.copy(s.project, session / "avsnittXX2" / "avsnittXX2.kdenlive")
+    # episodes marked with guides in the session project (other guides don't count)
+    proj = T.load(s.project)
+    guides = [
+        {"comment": "avsnitt231", "duration": 0, "pos": 90000, "type": 0},
+        {"comment": "avsnitt230", "duration": 0, "pos": 0, "type": 0},
+        {"comment": "funny bit", "duration": 0, "pos": 500, "type": 0},
+    ]
+    T.set_prop(proj.seq, "kdenlive:sequenceproperties.guides", json.dumps(guides))
+    T.save(proj, s.project)
     s = steps.state(session)
-    assert [e.name for e in s.episodes] == ["avsnittXX2"] and not s.cut
+    assert s.marked and [(e.name, e.start, e.project) for e in s.episodes] == [
+        ("avsnitt230", 0, None),
+        ("avsnitt231", 90000, None),
+    ]
+    assert steps.clock(90000, s.fps) == "0:25:00"
+
+    # the placeholder folder renamed to the first episode, with its copy of the project
     (session / "avsnittXX2").rename(session / "avsnitt230")
+    shutil.copy(s.project, session / "avsnitt230" / "avsnitt230.kdenlive")
     s = steps.state(session)
-    assert s.cut and not s.episodes[0].finished
+    first = s.episodes[0]
+    assert (first.name, first.start, first.finished) == ("avsnitt230", 0, False)
+    assert first.project == session / "avsnitt230" / "avsnitt230.kdenlive"
+    assert s.episodes[1].project is None
     assert not s.notes_current  # the project is newer than the .md
 
     later = time.time() + 10

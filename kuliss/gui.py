@@ -213,7 +213,7 @@ class Window(QMainWindow):
             self.error(str(e))
             return
         self.say("\n".join(steps.new_report(made)))
-        self.say("Next: put the recordings in sources/, then Sync.")
+        self.say("Next: copy the recordings into sources/, then Sync.")
         self.open(made.dir)
 
     # ── the steps ────────────────────────────────────────────────────────────
@@ -257,68 +257,94 @@ class Window(QMainWindow):
         self.links.setText(self._links(s))
 
     def _steps(self, s: steps.State, step) -> None:
+        folder = link(s.session, "the session folder")
+        main = link(s.project, "the session project")
         step(
             True,
-            "1. New session",
-            f"Made {link(s.session, 'the session folder')} with sources/, kortisar/, the "
-            "session's Kdenlive project and the notes file.",
+            "1. Create the session",
+            f"Made {folder} with sources/, kortisar/, an avsnittXX… folder, the notes file "
+            "and the session project. Recording a new session? Start here.",
             ("New session…", self.new_session, True),
         )
         found = ", ".join(escape(name) for name in s.recordings) or "none yet"
         step(
             bool(s.recordings),
-            "2. Recordings",
-            f"Move the session's .mkv files into {link(s.session / 'sources', 'sources/')}. "
-            f"Found: {found}",
+            "2. Add the recordings",
+            f"Copy everyone's .mkv into {link(s.session / 'sources', 'sources/')}, named "
+            f"&lt;date&gt;_&lt;initial&gt;.mkv. Found: {found}",
         )
         step(
             s.synced,
             "3. Sync",
-            f"Puts the recordings on {link(s.project, "the session's Kdenlive project")}, lined "
-            "up on the call audio; then check the sync by ear in Kdenlive. Synced by hand "
-            "instead? This shows ✓ as soon as that project has clips.",
+            f"Puts every recording on {main} so they share one timeline: Voice clips grouped, "
+            "each game video grouped with its game audio, every track slimmed down. Then "
+            "listen in Kdenlive that the voices line up. Synced by hand? This shows ✓ as "
+            "soon as the project has clips.",
             ("Sync", lambda: self.sync(s.session), bool(s.recordings) and not s.synced),
         )
-        episodes = "".join(f"<br>{link(e.project, e.name)}" for e in s.episodes)
-        step(
-            s.cut,
-            "4. Cut the episodes",
-            f"In {link(s.session, 'the session folder')}, rename avsnittXX… to avsnitt&lt;nr&gt;. "
-            "In Kdenlive, <i>Save Copy</i> the synced session project there as "
-            "avsnitt&lt;nr&gt;.kdenlive (folder and file share the name), open the copy and "
-            f"cut it to the episode, starting at 0. Jot notes in Document Notes.{episodes}",
+        marked = ", ".join(
+            f"{escape(e.name)} {steps.clock(e.start, s.fps)}"
+            for e in s.episodes
+            if e.start is not None
         )
         step(
-            s.notes_current if s.episodes else False,
-            "5. Notes",
-            f"Merges each episode's Kdenlive notes into {link(s.md, 'the notes file')}. Then "
-            "fill in the "
-            "Titel and the other fields there.",
-            ("Update notes", lambda: self.notes(s.session, False), bool(s.episodes)),
-            ("Dry run", lambda: self.notes(s.session, True), bool(s.episodes)),
+            s.marked,
+            "4. Mark the episodes",
+            f"In {main}, add a guide where each episode starts, named after it "
+            "(avsnitt230, avsnitt231, …). Look about 20 minutes ahead, then for a joke or "
+            "a natural break; 20–25 minutes each, or what the flow needs. From now on the "
+            "session project is the single source of truth: fix sound and episode borders "
+            f"there. Marked: {marked or 'none yet'}",
         )
         step(
-            bool(s.episodes) and all(e.finished for e in s.episodes),
-            "6. Finish each episode",
-            "One episode at a time: its overlay, switch sounds, intro and outro go into that "
-            "episode's project. Run it again after any change to that edit, then reopen the "
-            "project in Kdenlive."
-            + ("" if s.episodes else " The episodes from step 4 show up here."),
+            None,
+            "5–9. Each episode, in order",
+            "<ol start=5 style='margin-left:-20px'>"
+            f"<li><b>Make its project.</b> Rename the avsnittXX… folder in {folder} to the "
+            "episode (or add a folder for the next one). In the session project, "
+            "<i>Copy to…</i> that folder as avsnitt&lt;nr&gt;.kdenlive and <b>open the "
+            "copy</b>. Cut at the episode's guides and delete everything outside, including "
+            "the Comms tracks.</li>"
+            "<li><b>Choose the views.</b> Show the four game videos side by side and keep one "
+            "at a time: cut between words, and switch a moment before someone starts on "
+            "something new. Jot moments in Document Notes as you go (a * after the timestamp "
+            "makes a YouTube chapter).</li>"
+            "<li><b>Finish</b> (below): intro and outro, ducked under the first and last "
+            "voice, a swoosh at every switch and the overlay showing whose view it is. Run it "
+            "again after any change to the edit, then reopen the project in Kdenlive.</li>"
+            "<li><b>Notes</b> (below): fill in the Titel and the other fields.</li>"
+            "<li><b>Render</b> in Kdenlive.</li></ol>",
         )
+        if not s.episodes:
+            step(
+                False, "      no episodes yet", "They show up here once marked (step 4).", sub=True
+            )
         for e in s.episodes:
+            has = e.project is not None
+            where = "" if e.start is None else f" · starts at {steps.clock(e.start, s.fps)}"
             step(
                 e.finished,
                 e.name,
-                link(e.project, "its Kdenlive project"),
-                ("Analyse", lambda _=False, p=e.project: self.finish(p, "analyse"), True),
+                (link(e.project, "its project") if has else "no project yet (step 5)") + where,
+                ("Analyse", lambda _=False, p=e.project: self.finish(p, "analyse"), has),
                 (
                     f"Preview {PREVIEW} s",
                     lambda _=False, p=e.project: self.finish(p, "preview"),
-                    True,
+                    has,
                 ),
-                ("Finish", lambda _=False, p=e.project: self.finish(p, "finish"), True),
+                ("Finish", lambda _=False, p=e.project: self.finish(p, "finish"), has),
                 sub=True,
             )
+        made = [e for e in s.episodes if e.project]
+        step(
+            s.notes_current if made else False,
+            "8. Notes",
+            f"Gathers every episode's Document Notes into {link(s.md, 'the notes file')} "
+            "(chapters, Bryggpromenader, the checklist). Then fill in the Titel and the other "
+            "fields there.",
+            ("Update notes", lambda: self.notes(s.session, False), bool(made)),
+            ("Dry run", lambda: self.notes(s.session, True), bool(made)),
+        )
 
     def _links(self, s: steps.State | None) -> str:
         html = ""
