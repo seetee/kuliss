@@ -325,7 +325,12 @@ class Window(QMainWindow):
             step(
                 e.finished,
                 e.name,
-                (link(e.project, "its project") if has else "no project yet (step 5)") + where,
+                (
+                    link(e.project, f"Open {e.project.name}")
+                    if has
+                    else f"No {escape(e.name)}.kdenlive yet (step 5)"
+                )
+                + where,
                 ("Analyse", lambda _=False, p=e.project: self.finish(p, "analyse"), has),
                 (
                     f"Preview {PREVIEW} s",
