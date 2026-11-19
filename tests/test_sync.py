@@ -161,6 +161,12 @@ def test_sync_places_recordings_and_refuses_a_second_run(tmp_path):
     assert mixer(p, "K Game")["volume"]["level"] == "-20.5"
     assert mixer(p, "J Comms") == {}
 
+    collapsed = {
+        T.props(t).get("kdenlive:collapsed")
+        for t in p.root.iter("tractor")
+        if "kdenlive:track_name" in T.props(t)
+    }
+    assert collapsed == {"28"}  # every track in the slimmed-down view
     # grouped as the crew does: all Voice clips; each player's game video with its audio
     groups = json.loads(T.props(p.seq)["kdenlive:sequenceproperties.groups"])
     assert [(g["type"], [c["data"] for c in g["children"]]) for g in groups] == [

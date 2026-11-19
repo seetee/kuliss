@@ -239,6 +239,7 @@ def sync_session(session_dir: Path) -> SyncResult:
                     (track_name("{i} Game", r), True, starts[r.name]),
                 ],
             )
+    timeline.collapse_tracks(project)
     backup = timeline.write(project, path, mtime)
     return SyncResult(path, backup, reference.name, found, added, seconds, left_out)
 

@@ -1005,6 +1005,18 @@ def place(
     project.length = max(project.length, end)
 
 
+COLLAPSED = 28  # kdenlive:collapsed of a slimmed-down track (its header height); 0 = full
+
+
+def collapse_tracks(project: Project) -> None:
+    """Every track of the sequence in Kdenlive's slimmed-down view, as the crew keeps them."""
+    byid = project.byid()
+    for ref in project.seq.findall("track"):
+        t = byid.get(ref.get("producer"))
+        if t is not None and t.tag == "tractor":
+            set_prop(t, "kdenlive:collapsed", COLLAPSED)
+
+
 def group(project: Project, clips: list[tuple[str, bool, int]]) -> None:
     """Group clips, given as (track name, audio?, start frame), as Kdenlive's Ctrl+G
     does: one "Normal" group in the sequence's groups JSON, beside any already there."""
