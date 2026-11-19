@@ -32,16 +32,10 @@ Checked in the Kdenlive GUI on 2026-11-18:
 
 For Kenneth, in this order:
 
-- [ ] **avsnitt227 (real).** Delete the 24 hand-placed swooshes on `Assets`, then run
-      `kuliss finish`. Listen for missing or doubled swooshes.
 - [ ] **`show_view = false`.** On a copy, run `--preview 30`. Check that all avatars are
       the same size, there is no label, the talking marker works and there are no
       swooshes. Then do a full run on a copy that already has swooshes and check that they
       are gone.
-- [ ] **`kuliss new` + `kuliss sync`.** Use a scratch session with copied recordings and
-      open it in Kdenlive. Check that the clips are there, the sync by ear, the track order
-      and the mixer values (voice gain, pan, Audio contrast), and that Kdenlive saves it
-      without complaint.
 - [ ] **Overlap warning.** Put one of your own clips on `Assets` audio where a swoosh would
       go and run again. Expect a warning ("switch sound at MM:SS"), the swoosh left out,
       and your clip untouched.
@@ -52,7 +46,6 @@ For Kenneth, in this order:
       the show folder.
 - [ ] **Theme from scratch.** Build one using only the README's "Making a theme"; anything
       you had to guess is a gap in the docs.
-- [ ] `_assets/samkvam-session_template.kdenlive` can be deleted (no longer used).
 
 The session workflow:
 1. `kuliss new`, move the .mkv files to `sources/`, `kuliss sync`.
@@ -72,14 +65,6 @@ Decided:
 - 2026-11-19:
   - Game software lines live in the crew file's `[software]`; no stream-name aliases in sync.
   - No waveform pre-render in sync (it would copy Kdenlive's undocumented cache format).
-
-## For Kenneth to judge
-
-- [ ] Watch a `kuliss finish --preview 90` in Kdenlive: are words still missed, and does the
-      new look (shadows, voice-level glow and bars) work? If words are still missed, lower
-      `speech_threshold` in the theme; the default was tuned on avsnitt215 only.
-- [ ] `session_28_2025-10-24/avsnitt224/avsnittXX28.kdenlive` is now found without a rename
-      (an `avsnitt*` folder with exactly one `.kdenlive`). Renaming it is still tidier.
 
 ## Speed and memory
 
@@ -111,12 +96,6 @@ Built as proposed (`gui.py`, `steps.py`, `tests/test_gui.py`). Still to do:
 
 ## `kuliss sync` and `kuliss new` (added 2026-10-30)
 
-- [ ] **Session 29 (real).** It was synced before grouping and slimmed-down tracks existed
-      (2026-11-19). Clear the recordings' tracks and run `kuliss sync` again, then check in
-      Kdenlive: each clip plays the right audio stream, the sync by ear (Joel, Kenneth and
-      Robin have no `Comms`, so they are synced one way), the groups, and that every track is
-      slimmed down. The folder says 2025-12-31 but the recordings 2025-11-22: rename it if
-      the date is wrong.
 - [ ] First real guest `.mkv`: check that the created guest tracks look right in the GUI.
 - [ ] Known limits, fix only if they bite: re-syncing after clearing the tracks adds the files
       to the bin again (`timeline.add_source`); guest names with a hyphen or space
