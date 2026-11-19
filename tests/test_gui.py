@@ -154,7 +154,7 @@ def test_archived_sessions_count_for_the_next_number(tmp_path, caplog):
     assert "is not reachable" in caplog.text
 
 
-def test_theme_assets_folder_is_set_once(tmp_path):
+def test_theme_assets_folder_is_set_once(tmp_path, monkeypatch):
     from kuliss.config import load_theme
 
     assets = tmp_path / "_assets"
@@ -171,6 +171,10 @@ def test_theme_assets_folder_is_set_once(tmp_path):
     loaded = load_theme(theme)
     assert loaded.sound == (assets / "swosh.flac").resolve()
     assert loaded.players[0].avatar == (assets / "avatars" / "kenneth.png").resolve()
+    monkeypatch.setenv("HOME", str(tmp_path))  # ~ expands before the join
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    theme.write_text(theme.read_text(encoding="utf-8").replace("../_assets", "~/_assets"))
+    assert load_theme(theme).sound == (assets / "swosh.flac").resolve()
     theme.write_text('assets = "../nowhere"\n', encoding="utf-8")
     with pytest.raises(VoiceError, match="no such folder"):
         load_theme(theme)

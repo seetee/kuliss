@@ -162,14 +162,14 @@ def load_theme(path: Path) -> Theme:
     base = path.parent
     if "assets" in raw:  # the folder every other path is relative to, set once
         assets = raw["assets"]
-        if not isinstance(assets, str) or not (base / assets).expanduser().is_dir():
+        if not isinstance(assets, str) or not (base / Path(assets).expanduser()).is_dir():
             die(f"{path.name}: assets = {assets!r}: no such folder")
-        base = (base / assets).expanduser().resolve()
+        base = (base / Path(assets).expanduser()).resolve()
 
     def file(value: object, key: str) -> Path:
         if not isinstance(value, str) or not value:
             die(f"{path.name}: {key} must be a file path, got {value!r}")
-        p = (base / value).expanduser().resolve()
+        p = (base / Path(value).expanduser()).resolve()  # ~ first: after joining it's literal
         if not p.is_file():
             die(f"{path.name}: {key} = {value!r}: no such file ({p})")
         return p
