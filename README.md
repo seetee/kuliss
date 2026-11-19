@@ -168,7 +168,7 @@ Running it again after you re-edit reuses the same tracks and clips and regenera
 
 ### The theme
 
-Copy [`theme.example.toml`](theme.example.toml) to `theme.toml` next to the project, or into a folder above it; the nearest one wins (see [Where files live](#where-files-live)). Keep one theme per game: for the game you play most, put it in the folder holding the `session_*` folders so every session uses it, and give a session with another game its own `theme.toml`. `kuliss new` warns when the new session has no theme above it.
+Copy [`theme.example.toml`](theme.example.toml) to `theme.toml` next to the project, or into a folder above it; the nearest one wins (see [Where files live](#where-files-live)). Keep one theme per game, in the game's folder (`po3/theme.toml`), so every session of that game uses it. `kuliss new` warns when the new session has no theme above it.
 
 - `position` picks a corner (`top-left`, `top-right`, `bottom-left`, `bottom-right`) or an edge centre (`top`, `bottom`, `left`, `right`). `margin` is the distance from the edges the bar sits against, and `offset = [x, y]` nudges it from there in pixels (positive = right/down). For example, `position = "left"` with `offset = [0, -100]` centres the bar on the left edge, 100 px above the middle.
 - `orientation = "horizontal"` (the default) draws a row, `"vertical"` a column along the frame edge. The name label sits under the viewed avatar either way; the column spaces the avatars out to leave room for it.
