@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QScrollArea,
+    QSpinBox,
     QSplitter,
     QVBoxLayout,
     QWidget,
@@ -99,12 +100,16 @@ class LogHandler(logging.Handler):
 class NewSessionDialog(QDialog):
     def __init__(self, parent: QWidget, number: int, presets: dict[str, list[str]]):
         super().__init__(parent)
-        self.setWindowTitle(f"New session {number}")
+        self.setWindowTitle("New session")
         form = QFormLayout(self)
         self.date = QDateEdit(QDate.currentDate())
         self.date.setCalendarPopup(True)
         self.date.setDisplayFormat("yyyy-MM-dd")
         form.addRow("Recording date", self.date)
+        self.number = QSpinBox()
+        self.number.setRange(1, 9999)
+        self.number.setValue(number)
+        form.addRow("Session number", self.number)
         self.software = QPlainTextEdit()
         if presets:  # the game's own lines, from the crew file
             game = QComboBox()
@@ -124,9 +129,10 @@ class NewSessionDialog(QDialog):
         buttons.rejected.connect(self.reject)
         form.addRow(buttons)
 
-    def answers(self) -> tuple[str, list[str]]:
+    def answers(self) -> tuple[str, int, list[str]]:
         lines = [line.rstrip() for line in self.software.toPlainText().splitlines()]
-        return self.date.date().toString("yyyy-MM-dd"), [line for line in lines if line]
+        date = self.date.date().toString("yyyy-MM-dd")
+        return date, self.number.value(), [line for line in lines if line]
 
 
 class Window(QMainWindow):
@@ -207,7 +213,7 @@ class Window(QMainWindow):
             dialog = NewSessionDialog(self, number, scaffold.software_presets(root))
             if not dialog.exec():
                 return
-            session_date, software = dialog.answers()
+            session_date, number, software = dialog.answers()
             made = scaffold.scaffold_session(root, number, session_date, software)
         except VoiceError as e:
             self.error(str(e))

@@ -102,9 +102,10 @@ def test_window_opens_and_closes(tmp_path, monkeypatch):
     assert "no episode subdirectories found" in window.log.toPlainText()
     assert window.split.sizes()[1] > 0  # and opens for the first output
     dialog = gui.NewSessionDialog(window, 3, {"Ozone": ["* Minecraft 1.12.2"]})
-    assert dialog.answers()[1][0] == "* Minecraft 1.12.2"  # the first game by default
+    assert dialog.answers()[1] == 3
+    assert dialog.answers()[2][0] == "* Minecraft 1.12.2"  # the first game by default
     dialog.findChild(gui.QComboBox).setCurrentText("None")
-    assert "Minecraft" not in "".join(dialog.answers()[1])
+    assert "Minecraft" not in "".join(dialog.answers()[2])
     assert window.close()
     window.deleteLater()
     app.shutdown()  # now, not at interpreter exit: a late teardown crashes on Linux CI
@@ -135,3 +136,38 @@ def test_game_folders_share_the_show_crew_file(tmp_path, caplog):
     assert master["volume"]["level"] == "3.0"  # the show's crew file, two folders up
     assert steps.state(made.dir).crew_file == tmp_path / "_assets" / "kuliss.toml"
     assert scaffold.next_session(made.dir) == (game, 2)
+
+
+def test_archived_sessions_count_for_the_next_number(tmp_path, caplog):
+    show, archive = tmp_path / "show", tmp_path / "archive"
+    (show / "_assets").mkdir(parents=True)
+    (show / "po3" / "session_27_2025-08-23").mkdir(parents=True)
+    (archive / "po3" / "session_34_2026-08-15").mkdir(parents=True)
+    crew = show / "_assets" / "kuliss.toml"
+    crew.write_text(f'archive = "{archive.as_posix()}"\n', encoding="utf-8")
+    assert scaffold.next_session(show / "po3") == (show / "po3", 35)
+    crew.write_text('archive = "../elsewhere"\n', encoding="utf-8")  # the drive isn't plugged in
+    assert scaffold.next_session(show / "po3") == (show / "po3", 28)
+    assert "is not reachable" in caplog.text
+
+
+def test_theme_assets_folder_is_set_once(tmp_path):
+    from kuliss.config import load_theme
+
+    assets = tmp_path / "_assets"
+    (assets / "avatars").mkdir(parents=True)
+    for name in ("swosh.flac", "avatars/kenneth.png"):
+        (assets / name).touch()
+    (tmp_path / "po3").mkdir()
+    theme = tmp_path / "po3" / "theme.toml"
+    theme.write_text(
+        'assets = "../_assets"\nsound = "swosh.flac"\n'
+        '[[player]]\nname = "Kenneth"\ncolour = "#c83c5a"\navatar = "avatars/kenneth.png"\n',
+        encoding="utf-8",
+    )
+    loaded = load_theme(theme)
+    assert loaded.sound == (assets / "swosh.flac").resolve()
+    assert loaded.players[0].avatar == (assets / "avatars" / "kenneth.png").resolve()
+    theme.write_text('assets = "../nowhere"\n', encoding="utf-8")
+    with pytest.raises(VoiceError, match="no such folder"):
+        load_theme(theme)

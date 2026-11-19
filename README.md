@@ -86,7 +86,8 @@ samkvam.online/
 
 - **One folder per game**, each with its own `theme.toml` and its own session numbers. Run `kuliss new` inside the game's folder; a new game's first session is `session_01` once its folder has a `theme.toml`. A session can still have its own `theme.toml` (the nearest one wins).
 - **Shared files go in `_assets/`** in the show folder, never in a game or session folder or elsewhere on the disk. kuliss finds the crew file there from any game, and themes point into it (`../_assets/…` from a game folder).
-- **A theme uses paths relative to itself**, such as `../_assets/avatars/kenneth.png`, so it keeps working wherever the show folder lands, on Linux or Windows.
+- **A theme uses paths relative to itself**, such as `../_assets/avatars/kenneth.png`, so it keeps working wherever the show folder lands, on Linux or Windows. Set `assets = "../_assets"` once and the other paths are relative to that folder instead (`avatars/kenneth.png`).
+- **Sessions moved to another drive** still count when `kuliss new` numbers the next one: put `archive = "/path/to/show.archive"` in the crew file, with the same game folders inside (`show.archive/po3/session_*`). If the drive isn't there, kuliss warns, and you can type the right number.
 - **kuliss's own clips repair themselves:** the overlay, switch sounds, intro and outro get their current path on every run of `kuliss finish`.
 - **Kdenlive stores full paths** (`/home/kenneth/documents/samkvam.online/_assets/…`) for clips outside the project's own folder, such as namecards placed by hand. On another computer Kdenlive reports them missing when the project opens; let its dialog search the show folder to find them again.
 
@@ -185,7 +186,7 @@ A theme is one folder holding `theme.toml` and the files it names. Start from [`
 1. Make a folder for the game, for example `minecraft-theme/`, next to the `session_*` folders (or put `theme.toml` straight in the folder holding them).
 2. Copy `theme.example.toml` into it as `theme.toml`.
 3. Add one `[[player]]` section per player (1–8) with `name`, `colour` (`"#rrggbb"`) and `avatar`.
-4. Add the files below, and point the theme at them with paths relative to `theme.toml`.
+4. Add the files below, and point the theme at them with paths relative to `theme.toml` (or to `assets`, if you set it).
 5. Run `kuliss finish P.kdenlive --preview 30` on a copy of an episode and look at the preview. Adjust `position`, `avatar_size` and the rest, and preview again.
 
 | Key | What it is | Format | Size and length |

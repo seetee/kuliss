@@ -72,6 +72,7 @@ class Crew:
     game_gain: float = 0.0  # every player's game audio track
     voice: dict[str, Mixer] = field(default_factory=dict)  # player -> their voice track
     software: dict[str, list[str]] = field(default_factory=dict)  # game -> its .md lines
+    archive: Path | None = None  # where older sessions are kept: <archive>/<game>/session_*
 
     def voice_of(self, name: str) -> Mixer:
         return self.voice.get(name, Mixer())
@@ -88,6 +89,7 @@ def parse_colour(text: str, where: str) -> tuple[int, int, int]:
 
 
 THEME_KEYS = {
+    "assets",
     "sound",
     "backdrop",
     "font",
@@ -105,7 +107,7 @@ THEME_KEYS = {
 }
 PLAYER_KEYS = {"name", "colour", "avatar", "source", "voice_track"}
 CREW_FILE = Path("_assets") / "kuliss.toml"  # in the show folder, above every game folder
-CREW_KEYS = {"master_gain", "assets_gain", "game_gain", "voice", "software"}
+CREW_KEYS = {"master_gain", "assets_gain", "game_gain", "voice", "software", "archive"}
 VOICE_KEYS = {"gain", "pan", "contrast"}
 CODECS = ("ffv1", "qtrle")  # ffv1: free/open, lossless; qtrle: about 20% smaller files, no faster
 
@@ -158,6 +160,11 @@ def load_theme(path: Path) -> Theme:
     except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as e:
         die(f"{path}: {e}")
     base = path.parent
+    if "assets" in raw:  # the folder every other path is relative to, set once
+        assets = raw["assets"]
+        if not isinstance(assets, str) or not (base / assets).expanduser().is_dir():
+            die(f"{path.name}: assets = {assets!r}: no such folder")
+        base = (base / assets).expanduser().resolve()
 
     def file(value: object, key: str) -> Path:
         if not isinstance(value, str) or not value:
@@ -294,10 +301,15 @@ def load_crew(path: Path) -> Crew:
         for lines in software.values()
     ):
         die(f'{w}: software is written as [software] with "<game>" = ["* line", ...]')
+    archive = raw.get("archive")
+    if archive is not None and (not isinstance(archive, str) or not archive):
+        die(f"{w}: archive must be a folder path, got {archive!r}")
     return Crew(
         gain(raw, "master_gain", w),
         gain(raw, "assets_gain", w),
         gain(raw, "game_gain", w),
         voice,
         software,
+        # relative to the show folder, which holds _assets/
+        path.parent.parent / Path(archive).expanduser() if archive else None,
     )

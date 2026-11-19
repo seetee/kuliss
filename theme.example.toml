@@ -1,6 +1,8 @@
 # theme.toml: one per game. Put it next to the .kdenlive project or in any
 # folder above it (e.g. the season folder), or pass --theme.
-# Paths are relative to this file.
+# Paths are relative to this file, or to `assets` when it is set.
+# assets = "../_assets"         # the folder every other path is relative to: set it once,
+#                               # then write "avatars/kenneth.png" instead of "../_assets/avatars/…"
 
 # Image, sound and video formats and sizes: see "Making a theme" in README.md.
 sound    = "../_assets/namecard/60003__qubodup__loud-swosh-16.flac"  # plays on every view switch

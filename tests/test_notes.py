@@ -594,7 +594,7 @@ class ScaffoldTests(unittest.TestCase):
             t.episode("avsnitt207", NOTEWORTHY)
             self._crew(tmp)
             answers = (
-                ["2026-08-01", ""]  # date, the first game
+                ["2026-08-01", "", ""]  # date, the proposed number, the first game
                 + ["Prism Launcher 9.3"]  # replace first software line
                 + [""] * len(kc.SOFTWARE_DEFAULTS)  # keep the rest (Faithful and the defaults)
                 + ["Handbrake 1.7", ""]  # one extra line, then finish
@@ -614,10 +614,13 @@ class ScaffoldTests(unittest.TestCase):
             t = SessionTree(tmp)
             t.episode("avsnitt207", NOTEWORTHY)
             self._crew(tmp)
-            answers = ["2026-08-01", "Doom", "none"] + [""] * (len(kc.SOFTWARE_DEFAULTS) + 1)
+            answers = ["2026-08-01", "x", "40", "Doom", "none"] + [""] * (
+                len(kc.SOFTWARE_DEFAULTS) + 1
+            )
             out = self._scaffold(Path(tmp), answers)
             self.assertIn("unknown game 'Doom'", out)
-            md = (Path(tmp) / "session_27_2026-08-01" / "session_27_2026-08-01.md").read_text(
+            self.assertIn("invalid number 'x'", out)
+            md = (Path(tmp) / "session_40_2026-08-01" / "session_40_2026-08-01.md").read_text(
                 encoding="utf-8"
             )
             self.assertNotIn("Prism Launcher", md)
@@ -627,7 +630,7 @@ class ScaffoldTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             t = SessionTree(tmp)
             t.episode("avsnitt207", NOTEWORTHY)
-            answers = ["nyss", "2026-08-02"] + [""] * len(kc.SOFTWARE_DEFAULTS) + [""]
+            answers = ["nyss", "2026-08-02", ""] + [""] * len(kc.SOFTWARE_DEFAULTS) + [""]
             out = self._scaffold(Path(tmp), answers)
             self.assertIn("invalid date", out)
             self.assertTrue((Path(tmp) / "session_27_2026-08-02").is_dir())

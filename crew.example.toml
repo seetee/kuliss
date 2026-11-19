@@ -3,6 +3,11 @@
 # change them in Kdenlive afterwards as you like. Everything is optional: 0 dB, centred.
 # [software] lists each game's lines for a new session's notes file.
 
+# Where older sessions are moved to free space, as <archive>/<game folder>/session_*.
+# kuliss new counts them when it numbers the next session (absolute, or relative to the
+# show folder). Leave it out if every session stays in its game folder.
+# archive = "/home/alice/archive/show.archive"
+
 master_gain = 10.0    # dB, the sequence's master volume
 assets_gain = -21.0   # dB, the Assets audio track (intro and outro music)
 game_gain   = -21.5   # dB, every player's "<I> Game" track

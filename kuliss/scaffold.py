@@ -35,9 +35,22 @@ def next_session(start: Path) -> tuple[Path, int]:
     anywhere in or above a session tree. A game folder with its theme.toml but no
     sessions yet starts at 1."""
     root = next((c.parent for c in (start, *start.parents) if is_session_dir(c)), start)
+    folders = [root]
+    crew = crew_file(root)
+    archive = load_crew(crew).archive if crew.is_file() else None
+    if archive:  # sessions moved off this disk still count
+        if (archive / root.name).is_dir():
+            folders.append(archive / root.name)
+        else:
+            log.warning(
+                "the archive %s is not reachable, so the number counts only the sessions in %s",
+                archive / root.name,
+                root,
+            )
     numbers = [
         int(m[1])
-        for d in root.iterdir()
+        for folder in folders
+        for d in folder.iterdir()
         if d.is_dir() and (m := re.match(r"^session_(\d+)_", d.name))
     ]
     if not numbers:

@@ -116,6 +116,11 @@ def _new(args: argparse.Namespace) -> int:
             break
         except ValueError:
             print(f"  invalid date {raw!r} (expected YYYY-MM-DD)")
+    while not (raw := _prompt(f"Session number [{number}]: ", str(number))).isdigit() or not int(
+        raw
+    ):
+        print(f"  invalid number {raw!r}")
+    number = int(raw)
 
     presets = scaffold.software_presets(root)
     lines = SOFTWARE_DEFAULTS
