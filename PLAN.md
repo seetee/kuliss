@@ -20,7 +20,8 @@ Next, in this order:
 1. **Send Robin the zip** and be on chat for his first session (see the GUI section
    below). The zip was built in the session's scratchpad, which a reboot clears; if it is
    gone, rebuild it from `_assets/kuliss.toml` (without the `archive` line), the theme's
-   files, `plateup/theme.toml` and the `README.txt` text in the beta item below.
+   files, `plateup/theme.toml`, and a `README.txt` with the tag's install line, session
+   number 2, Game "PlateUp!", first marker avsnitt09, and "sync skipped files by hand".
 2. **Collect what broke or confused him**, fix it on main, tag `v3.0-beta2`.
 3. Kenneth's checks below.
 
