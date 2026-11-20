@@ -5,6 +5,7 @@ again whenever its window gets focus."""
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -118,6 +119,45 @@ def state(session: Path) -> State:
         newest = max(path.stat().st_mtime_ns for _, path in found)
         s.notes_current = md.stat().st_mtime_ns >= newest
     return s
+
+
+@dataclass
+class Recording:
+    file: str
+    player: str  # "" when sync can't tell whose it is
+    streams: set[str]  # the stream titles sync uses that it has, plus "video"
+    seconds: float
+    note: str  # why sync skips it or leaves a track out ("" when complete)
+
+
+def recordings(session: Path) -> list[Recording]:
+    """sources/*.mkv as sync will see them: whose, which streams, how long. Reads only
+    the files' headers; probe's warnings become each row's note instead of the log."""
+    files = sorted((session / "sources").glob("*.mkv"))
+    if not files:
+        return []
+    from . import session as sync_mod  # PyAV; only once there are files
+
+    notes: list[str] = []
+    catch = logging.Handler()
+    catch.emit = lambda record: notes.append(record.getMessage())
+    sync_mod.log.addHandler(catch)
+    sync_mod.log.propagate = False  # shortcut: not thread-safe; the GUI never reads during a job
+    rows = []
+    try:
+        for path in files:
+            notes.clear()
+            rec = sync_mod.probe(path, 100.0)
+            note = notes[0].removeprefix(f"{path.name}: ") if notes else ""
+            if rec is None:
+                rows.append(Recording(path.name, "", set(), 0.0, note))
+                continue
+            streams = set(rec.streams) | ({"video"} if rec.video else set())
+            rows.append(Recording(path.name, rec.name, streams, rec.length / 100, note))
+    finally:
+        sync_mod.log.removeHandler(catch)
+        sync_mod.log.propagate = True
+    return rows
 
 
 def clock(frame: int, fps: float) -> str:

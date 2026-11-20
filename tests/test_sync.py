@@ -282,3 +282,22 @@ def test_write_refuses_a_project_saved_meanwhile(tmp_path):
     with pytest.raises(VoiceError, match="was saved while we worked"):
         T.write(proj, project, mtime)
     assert not list(tmp_path.glob("*.bak")) and not list(tmp_path.glob("*.partial"))
+
+
+def test_recordings_lists_what_sync_will_see(tmp_path, caplog):
+    from kuliss import steps
+
+    sources = tmp_path / "sources"
+    sources.mkdir()
+    voice = bursts(3)
+    recording(sources / "2026-10-30_k.mkv", voice, voice, 3)
+    recording(sources / "2026-10-30_j.mkv", voice, voice, 3, drop=("Comms",))
+    (sources / "2026-10-30_h.mkv").write_bytes(b"not a video")
+    rows = {r.file: r for r in steps.recordings(tmp_path)}
+    k, j, h = (rows[f"2026-10-30_{i}.mkv"] for i in "kjh")
+    assert (k.player, k.note, round(k.seconds)) == ("Kenneth", "", 3)
+    assert k.streams == {"Voice audio", "Comms", "Game audio", "video"}
+    assert j.player == "Joel" and "Comms" not in j.streams and j.note.startswith("no Comms")
+    assert h.player == "" and h.note.startswith("cannot read it")
+    assert not caplog.records  # notes on the rows, not warnings in the log
+    assert steps.recordings(tmp_path / "nowhere") == []
