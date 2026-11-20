@@ -88,10 +88,13 @@ Built as proposed (`gui.py`, `steps.py`, `tests/test_gui.py`). Still to do:
       Check that each link opens the right program (Kate for `.toml`/`.md`, Kdenlive,
       Dolphin, the video player for the preview), and that a running Finish shows progress.
 - [ ] **Robin's Windows beta (PlateUp! one-shot, Robin, Jesper, Henrik, Kenneth):** install
-      as in the README's Windows section, edit the session through the window, report what
-      breaks or confuses. `plateup/theme.toml` drafted 2026-11-20 (`show_view = false`;
-      session 02, first episode avsnitt09); still needs `_assets/avatars/jesper.png` and his
-      colour, then the theme's files from `_assets/` go to Robin.
+      from the tag `v3.0-beta1` (pinned, so pushes to main don't change his kuliss), edit
+      the session through the window, report what breaks or confuses. Kenneth helps over
+      chat. His zip (2026-11-20): `_assets/` (crew file without `archive`, with a
+      `"PlateUp!"` software entry; avatars incl. Jesper `#fce241`; intro, outro, card),
+      `plateup/theme.toml` (`show_view = false`; session 02, first episode avsnitt09) and a
+      `README.txt`. The PlateUp! recordings probably lack the OBS stream titles: he syncs
+      those by hand. New fixes for him: tag `v3.0-beta2` and send the install line.
 - [ ] **Windows:** the same, and that `.toml` has a program to open it (none is set by
       default; associate it with Notepad or Kate if the link does nothing).
 - [ ] **Kenneth:** the new layout (2026-11-20, steps on the left, pages on the right): click
