@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="520" height="168" viewBox="0 0 520 168" font-family="sans-serif" font-size="12">
+  <!-- Copy to… the episode folder, then cut at its guides and delete the rest -->
+  <text x="10" y="16" fill="#888">session project</text>
+  <g opacity="0.9">
+    <rect x="10" y="24" width="500" height="10" rx="2" fill="#4e79a7"/>
+    <rect x="10" y="37" width="500" height="10" rx="2" fill="#f28e2b"/>
+    <rect x="10" y="50" width="500" height="10" rx="2" fill="#888"/>
+  </g>
+  <g stroke="#c040c0" stroke-width="2"><line x1="180" y1="20" x2="180" y2="64"/><line x1="350" y1="20" x2="350" y2="64"/></g>
+  <text x="380" y="80" fill="#888">Copy to… avsnitt231/</text>
+  <path d="M265 68 v18 m-6 -6 l6 6 l6 -6" stroke="#888" stroke-width="2" fill="none"/>
+  <text x="10" y="104" fill="#888">avsnitt231.kdenlive</text>
+  <g opacity="0.25">
+    <rect x="10" y="112" width="170" height="10" rx="2" fill="#4e79a7"/>
+    <rect x="10" y="125" width="170" height="10" rx="2" fill="#f28e2b"/>
+    <rect x="350" y="112" width="160" height="10" rx="2" fill="#4e79a7"/>
+    <rect x="350" y="125" width="160" height="10" rx="2" fill="#f28e2b"/>
+  </g>
+  <rect x="180" y="112" width="170" height="10" rx="2" fill="#4e79a7"/>
+  <rect x="180" y="125" width="170" height="10" rx="2" fill="#f28e2b"/>
+  <g stroke="#e15759" stroke-width="2">
+    <line x1="60" y1="108" x2="130" y2="140"/><line x1="130" y1="108" x2="60" y2="140"/>
+    <line x1="395" y1="108" x2="465" y2="140"/><line x1="465" y1="108" x2="395" y2="140"/>
+  </g>
+  <text x="10" y="162" fill="#888">keep the middle; delete the rest, and the Comms tracks (grey)</text>
+</svg>

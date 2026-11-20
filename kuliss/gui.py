@@ -1,8 +1,10 @@
 """kuliss gui: one window that walks through a session in the order of the session workflow.
 
-Each step shows whether it is done (steps.state, read from disk whenever the window gets
-focus), a button that runs it, and links that open the files involved in their default
-program (QDesktopServices: xdg-open on Linux, the file associations on Windows).
+The steps are a tree on the left (status first, episodes under their step); the selected
+step's page is on the right: what to do, a picture or list of what's there, its buttons,
+its problems and its own output. Done or not comes from steps.state, read from disk
+whenever the window gets focus. Links open files in their default program
+(QDesktopServices: xdg-open on Linux, the file associations on Windows).
 Like cli.py, this is a front end: it calls the library and shows what comes back.
 """
 
@@ -12,8 +14,10 @@ from html import escape
 from pathlib import Path
 
 from PySide6.QtCore import QDate, QObject, QSettings, Qt, QThread, QUrl, Signal
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtGui import QDesktopServices, QFont
+from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QApplication,
     QComboBox,
     QDateEdit,
@@ -21,7 +25,6 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFileDialog,
     QFormLayout,
-    QGridLayout,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -32,17 +35,29 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSpinBox,
     QSplitter,
+    QTableWidget,
+    QTableWidgetItem,
+    QTreeWidget,
+    QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
 from . import steps
 from .errors import VoiceError
-from .notes import SOFTWARE_DEFAULTS
+from .notes import EPISODE_PREFIX, SOFTWARE_DEFAULTS
 
 PREVIEW = 90  # s, as in the README's first check
 REPO = "https://github.com/seetee/kuliss"
+ART = Path(__file__).parent / "art"
+KEY = Qt.ItemDataRole.UserRole  # a tree item's step key, or a folder tree item's path
 Work = Callable[[Callable[[int, int], None]], tuple[list[str], Path | None]]
+MESSAGE = {  # inline message colours (KDE HIG): background, border; text is always dark
+    "info": ("#dbe9f7", "#3daee9"),
+    "positive": ("#dcf2e3", "#27ae60"),
+    "warning": ("#fbeacc", "#f67400"),
+    "error": ("#f7d7d9", "#da4453"),
+}
 
 
 def link(path: Path, text: str | None = None) -> str:
@@ -59,6 +74,63 @@ def rich(html: str) -> QLabel:
     label.setOpenExternalLinks(True)  # file:// links go to QDesktopServices.openUrl
     label.setWordWrap(True)
     return label
+
+
+def message(text: str, kind: str = "warning") -> QLabel:
+    """An inline message bar, for a problem on the step it concerns."""
+    label = rich(text)
+    background, border = MESSAGE[kind]
+    label.setStyleSheet(
+        f"QLabel {{ background: {background}; color: #232627; border-left: 4px solid {border};"
+        " padding: 6px; }"
+    )
+    return label
+
+
+def art(name: str) -> QSvgWidget:
+    picture = QSvgWidget(str(ART / name))
+    picture.setFixedSize(picture.renderer().defaultSize())
+    return picture
+
+
+def fit(view: QAbstractItemView, rows: int) -> None:
+    """No inner scrollbars: the page scrolls, not the list."""
+    view.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    view.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    if isinstance(view, QTreeWidget):
+        header, body = view.header(), rows * max(view.sizeHintForRow(0), 18)
+    else:
+        view.resizeRowsToContents()
+        header, body = view.horizontalHeader(), view.verticalHeader().length()
+    view.setFixedHeight(header.sizeHint().height() + body + 2 * view.frameWidth())
+
+
+def table(headers: list[str], rows: list[list[str]], note=False) -> QTableWidget:
+    """A read-only list. `note`: the last column takes the rest of the width, its long
+    texts cut short with the whole text as a tooltip."""
+    view = QTableWidget(len(rows), len(headers))
+    view.setHorizontalHeaderLabels(headers)
+    view.verticalHeader().hide()
+    view.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+    view.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+    view.setWordWrap(False)
+    for r, cells in enumerate(rows):
+        for c, text in enumerate(cells):
+            item = QTableWidgetItem(text)
+            item.setToolTip(text)
+            view.setItem(r, c, item)
+    view.resizeColumnsToContents()
+    if note:
+        view.horizontalHeader().setStretchLastSection(True)
+    else:  # as wide as its columns, not the page
+        width = view.horizontalHeader().length() + 2 * view.frameWidth()
+        view.setMaximumWidth(width)
+    fit(view, len(rows))
+    return view
+
+
+def mark(done: bool) -> str:
+    return "✓" if done else "○"
 
 
 class Job(QThread):
@@ -140,25 +212,43 @@ class Window(QMainWindow):
         super().__init__()
         self.settings = QSettings("kuliss", "kuliss")
         self.job: Job | None = None
+        self.job_key: str | None = None  # the step the running command belongs to
+        self.outputs: dict[str, list[str]] = {}  # each step's command output, this session
         self.session: Path | None = None
+        self.s: steps.State | None = None
+        self.selected: str | None = None  # the step on show, kept across refreshes
         self.root = start
 
         self.title = QLabel()
+        self.done = QLabel()
         choose = QPushButton("Choose session…")
         choose.clicked.connect(self.choose)
         top = QHBoxLayout()
         top.addWidget(self.title, 1)
+        top.addWidget(self.done)
         top.addWidget(choose)
 
-        self.scroll = QScrollArea()
-        self.scroll.setWidgetResizable(True)
+        self.tree = QTreeWidget()
+        self.tree.setHeaderHidden(True)
+        self.tree.setRootIsDecorated(False)
+        self.tree.setIndentation(18)
+        self.tree.currentItemChanged.connect(
+            lambda item, _: item and self.show_page(item.data(0, KEY))
+        )
         self.links = rich("")
         self.links.setAlignment(Qt.AlignmentFlag.AlignTop)
-        self.links.setMinimumWidth(220)
+        left = QWidget()
+        left_box = QVBoxLayout(left)
+        left_box.setContentsMargins(0, 0, 0, 0)
+        left_box.addWidget(self.tree, 1)
+        left_box.addWidget(self.links)
+        self.page = QScrollArea()
+        self.page.setWidgetResizable(True)
         middle = QSplitter()
-        middle.addWidget(self.scroll)
-        middle.addWidget(self.links)
-        middle.setStretchFactor(0, 1)
+        middle.addWidget(left)
+        middle.addWidget(self.page)
+        middle.setStretchFactor(1, 1)
+        middle.setSizes([260, 740])
 
         self.bar = QProgressBar()
         self.bar.hide()
@@ -183,7 +273,7 @@ class Window(QMainWindow):
         box.addLayout(top)
         box.addWidget(split, 1)
         self.setCentralWidget(central)
-        self.resize(1000, 750)
+        self.resize(1100, 780)
 
         self.bridge = LogBridge()
         self.bridge.line.connect(self.say)
@@ -194,7 +284,10 @@ class Window(QMainWindow):
     # ── session ──────────────────────────────────────────────────────────────
 
     def open(self, start: Path) -> None:
-        self.session = steps.pick_session(start)
+        found = steps.pick_session(start)
+        if found != self.session:
+            self.selected, self.outputs = None, {}
+        self.session = found
         self.root = self.session.parent if self.session else start
         if self.session:
             self.settings.setValue("session", str(self.session))
@@ -219,10 +312,9 @@ class Window(QMainWindow):
             self.error(str(e))
             return
         self.say("\n".join(steps.new_report(made)))
-        self.say("Next: copy the recordings into sources/, then Sync.")
         self.open(made.dir)
 
-    # ── the steps ────────────────────────────────────────────────────────────
+    # ── the step tree ────────────────────────────────────────────────────────
 
     def refresh(self) -> None:
         if self.job:  # a command is writing; its end refreshes
@@ -230,133 +322,399 @@ class Window(QMainWindow):
         if self.session and not self.session.is_dir():  # moved away, e.g. to the archive
             self.open(self.root if self.root.is_dir() else Path.home())
             return
-        grid_widget = QWidget()
-        grid = QGridLayout(grid_widget)
-        grid.setColumnStretch(2, 1)
-        grid.setVerticalSpacing(14)
-        self.row = 0
-
-        def step(done: bool | None, title: str, detail: str, *buttons, sub=False) -> None:
-            mark = {True: "✓", False: "○", None: ""}[done]
-            grid.addWidget(QLabel(f"<b>{mark}</b>"), self.row, 0, Qt.AlignmentFlag.AlignTop)
-            name = QLabel(escape(title) if sub else f"<b>{escape(title)}</b>")
-            name.setIndent(24 if sub else 0)  # an episode, under its step
-            grid.addWidget(name, self.row, 1, Qt.AlignmentFlag.AlignTop)
-            grid.addWidget(rich(detail), self.row, 2)
-            row_buttons = QHBoxLayout()
-            for text, action, enabled in buttons:
-                button = QPushButton(text)
-                button.clicked.connect(action)
-                button.setEnabled(enabled)
-                row_buttons.addWidget(button)
-            grid.addLayout(row_buttons, self.row, 3, Qt.AlignmentFlag.AlignTop)
-            self.row += 1
-
-        s = steps.state(self.session) if self.session else None
+        s = self.s = steps.state(self.session) if self.session else None
+        self.tree.blockSignals(True)
+        self.tree.clear()
         if s is None:
             self.setWindowTitle("kuliss")
             self.title.setText(f"<b>No session_* folder in {escape(str(self.root))}</b>")
-            step(False, "1. New session", "", ("New session…", self.new_session, True))
+            self.done.setText("")
+            self._item(self.tree, "session", False, "1  Session folder")
+            current = "session"
         else:
             self.setWindowTitle(f"kuliss – {s.session.name}")
-            self.title.setText(f"<b>{escape(s.session.name)}</b>")
-            self._steps(s, step)
-        grid.setRowStretch(self.row, 1)
-        self.scroll.setWidget(grid_widget)
+            self.title.setText(f"<big><b>{escape(s.session.name)}</b></big>")
+            current = self._fill_tree(s)
+        self.tree.expandAll()
+        self.tree.blockSignals(False)
+        keys = {
+            self.tree.topLevelItem(i).data(0, KEY) for i in range(self.tree.topLevelItemCount())
+        }
+        keys |= {key for key, _ in self._children()}
+        if self.selected not in keys:
+            self.selected = current
+        self._select(self.selected)
         self.links.setText(self._links(s))
 
-    def _steps(self, s: steps.State, step) -> None:
-        folder = link(s.session, "the session folder")
-        main = link(s.project, "the session project")
-        step(
-            True,
-            "1. Create the session",
-            f"Made {folder} with sources/, kortisar/, an avsnittXX… folder, the notes file "
-            "and the session project. Recording a new session? Start here.",
-            ("New session…", self.new_session, True),
+    def _item(self, parent, key: str, done: bool, text: str, current=False) -> QTreeWidgetItem:
+        item = QTreeWidgetItem(parent, [f"{'▶' if current else mark(done)}  {text}"])
+        item.setData(0, KEY, key)
+        if current:
+            font = item.font(0)
+            font.setBold(True)
+            item.setFont(0, font)
+        if key in self.problems_by_step():
+            item.setText(0, item.text(0) + "  ⚠")
+        return item
+
+    def _fill_tree(self, s: steps.State) -> str:
+        """The tree of steps; returns the first one not done (the current one)."""
+        made = [e for e in s.episodes if e.project]
+        episodes_done = bool(s.episodes) and all(e.finished for e in s.episodes)
+        notes_done = bool(made) and s.notes_current
+        order = [
+            ("session", True, "1  Session folder"),
+            ("recordings", bool(s.recordings), "2  Recordings"),
+            ("sync", s.synced, "3  Sync"),
+            ("marked", s.marked, "4  Mark the episodes"),
+            ("episodes", episodes_done, "5–9  Episodes"),
+            ("notes", notes_done, "8  Notes (all episodes)"),
+        ]
+        current = next((key for key, done, _ in order if not done), "notes")
+        if current == "episodes":
+            current = next((f"ep:{e.name}" for e in s.episodes if not e.finished), current)
+        for key, done, text in order:
+            item = self._item(self.tree, key, done, text, key == current)
+            if key == "episodes":
+                for e in s.episodes:
+                    k = f"ep:{e.name}"
+                    self._item(item, k, e.finished, e.name, k == current)
+        count = sum(done for _, done, _ in order)
+        self.done.setText(f"{count} of {len(order)} steps done")
+        return current
+
+    def _children(self):
+        if not self.s:
+            return []
+        return [(f"ep:{e.name}", e) for e in self.s.episodes]
+
+    def _select(self, key: str) -> None:
+        items = self.tree.findItems("*", Qt.MatchFlag.MatchWildcard | Qt.MatchFlag.MatchRecursive)
+        item = next(i for i in items if i.data(0, KEY) == key)
+        self.tree.setCurrentItem(item)  # shows its page
+        if self.tree.currentItem() is item:
+            self.show_page(key)  # already current: currentItemChanged doesn't fire
+
+    def go(self, key: str) -> None:
+        self.selected = key
+        self._select(key)
+
+    def problems_by_step(self) -> dict[str, list[str]]:
+        """Each problem on the step it concerns: an episode's own project, the session
+        project (sync and markers), anything else the session folder."""
+        found: dict[str, list[str]] = {}
+        s = self.s
+        if not s:
+            return found
+        for problem in s.problems:
+            episode = next((e for e in s.episodes if e.name in problem), None)
+            if episode:
+                keys = [f"ep:{episode.name}"]
+            elif s.project.name in problem:
+                keys = ["sync", "marked"]
+            else:
+                keys = ["session"]
+            for key in keys:
+                found.setdefault(key, []).append(problem)
+        return found
+
+    # ── the pages ────────────────────────────────────────────────────────────
+
+    def show_page(self, key: str) -> None:
+        self.selected = key
+        widget = QWidget()
+        box = QVBoxLayout(widget)
+        box.setSpacing(10)
+        s = self.s
+        if s is None:
+            self._no_session(box)
+        elif key.startswith("ep:"):
+            self._episode_page(box, s, next(e for e in s.episodes if f"ep:{e.name}" == key))
+        else:
+            getattr(self, f"_{key}_page")(box, s)
+        for problem in self.problems_by_step().get(key, []):
+            box.addWidget(message(escape(problem), "error"))
+        if self.outputs.get(key):
+            box.addWidget(QLabel("<b>Output</b>"))
+            out = QPlainTextEdit("\n".join(self.outputs[key]))
+            out.setReadOnly(True)
+            out.setMinimumHeight(140)
+            box.addWidget(out)
+        box.addStretch(1)
+        self.page.setWidget(widget)
+
+    def _heading(self, box: QVBoxLayout, title: str, goal: str) -> None:
+        heading = QLabel(escape(title))
+        font = heading.font()
+        font.setPointSizeF(font.pointSizeF() * 1.4)
+        font.setWeight(QFont.Weight.Bold)
+        heading.setFont(font)
+        box.addWidget(heading)
+        box.addWidget(rich(goal))
+
+    def _buttons(self, box: QVBoxLayout, *specs) -> None:
+        row = QHBoxLayout()
+        for text, action, enabled in specs:
+            button = QPushButton(text)
+            button.clicked.connect(action)
+            button.setEnabled(enabled)
+            row.addWidget(button)
+        row.addStretch(1)
+        box.addLayout(row)
+
+    def _no_session(self, box: QVBoxLayout) -> None:
+        self._heading(
+            box,
+            "1  Session folder",
+            f"There is no session_* folder in {escape(str(self.root))}. Choose one above, or "
+            "make the next one here: in a game's folder (e.g. po3/), next to its theme.toml.",
         )
-        found = ", ".join(escape(name) for name in s.recordings) or "none yet"
-        step(
-            bool(s.recordings),
-            "2. Add the recordings",
-            f"Copy everyone's .mkv into {link(s.session / 'sources', 'sources/')}, named "
-            f"&lt;date&gt;_&lt;initial&gt;.mkv. Found: {found}",
+        self._buttons(box, ("New session…", self.new_session, True))
+
+    def _session_page(self, box: QVBoxLayout, s: steps.State) -> None:
+        self._heading(
+            box,
+            "1  Session folder",
+            "Every session gets a folder like this one, made by <b>New session…</b>. "
+            "Grey lines are missing. Double-click a line to open it.",
         )
-        step(
-            s.synced,
-            "3. Sync",
-            f"Puts every recording on {main} so they share one timeline: Voice clips grouped, "
-            "each game video grouped with its game audio, every track slimmed down. Then "
-            "listen in Kdenlive that the voices line up. Synced by hand? This shows ✓ as "
-            "soon as the project has clips.",
-            ("Sync", lambda: self.sync(s.session), bool(s.recordings) and not s.synced),
+        box.addWidget(self._folder_tree(s))
+        self._buttons(box, ("New session…", self.new_session, True))
+
+    def _folder_tree(self, s: steps.State) -> QTreeWidget:
+        tree = QTreeWidget()
+        tree.setHeaderLabels(["Name", "What it is"])
+        tree.itemActivated.connect(
+            lambda item, _: (
+                item.data(0, KEY)
+                and Path(item.data(0, KEY)).exists()
+                and QDesktopServices.openUrl(QUrl.fromLocalFile(item.data(0, KEY)))
+            )
         )
-        marked = ", ".join(
-            f"{escape(e.name)} {steps.clock(e.start, s.fps)}"
-            for e in s.episodes
-            if e.start is not None
+        count = 0
+
+        def add(parent, path: Path, what: str) -> QTreeWidgetItem:
+            nonlocal count
+            count += 1
+            name = path.name + ("/" if path.is_dir() or not path.suffix else "")
+            item = QTreeWidgetItem(parent, [name, what])
+            item.setData(0, KEY, str(path))
+            if not path.exists():
+                item.setText(1, f"{what} (missing)")
+                for column in (0, 1):
+                    item.setForeground(column, self.palette().placeholderText())
+            return item
+
+        game, crew = s.session.parent, s.crew_file
+        show = crew.parent.parent
+        top = add(tree, show, "the show") if game.parent == show else None
+        if top:
+            assets = add(top, crew.parent, "shared by every game")
+            add(assets, crew, "crew file: mixer, game software, archive")
+        else:
+            add(tree, crew, "crew file")
+        g = add(top or tree, game, "the game: its sessions and look")
+        add(g, s.theme or game / "theme.toml", "the game's look (overlay, intro, outro)")
+        session = add(g, s.session, "this session")
+        n = len(s.recordings)
+        add(session, s.session / "sources", f"{n} recording{'s' * (n != 1)}")
+        add(session, s.session / "kortisar", "shorts and TikToks")
+        folders = sorted(
+            d for d in s.session.iterdir() if d.is_dir() and d.name.startswith(EPISODE_PREFIX)
         )
-        step(
-            s.marked,
-            "4. Mark the episodes",
-            f"In {main}, add a guide where each episode starts, named after it "
-            "(avsnitt230, avsnitt231, …). Look about 20 minutes ahead, then for a joke or "
-            "a natural break; 20–25 minutes each, or what the flow needs. From now on the "
-            "session project is the single source of truth: fix sound and episode borders "
-            f"there. Marked: {marked or 'none yet'}",
+        for folder in folders:
+            placeholder = folder.name.startswith(f"{EPISODE_PREFIX}XX")
+            item = add(
+                session,
+                folder,
+                "rename it to the first episode" if placeholder else "an episode",
+            )
+            episode = next(
+                (e for e in s.episodes if e.project and e.project.parent == folder), None
+            )
+            if episode:
+                add(item, episode.project, "its project")
+        add(session, s.md, "notes: titles, chapters, checklist")
+        add(session, s.project, "session project: every recording, in sync")
+        tree.expandAll()
+        tree.resizeColumnToContents(0)
+        fit(tree, count)
+        return tree
+
+    def _recordings_page(self, box: QVBoxLayout, s: steps.State) -> None:
+        self._heading(
+            box,
+            "2  Recordings",
+            f"Copy everyone's OBS recording into {link(s.session / 'sources', 'sources/')}, "
+            "named &lt;date&gt;_&lt;initial&gt;.mkv (a guest: &lt;date&gt;_&lt;name&gt;.mkv). "
+            "Sync uses the streams titled Voice audio, Comms and Game audio, and the video.",
         )
-        step(
-            None,
-            "5–9. Each episode, in order",
-            "<ol start=5 style='margin-left:-20px'>"
-            f"<li><b>Make its project.</b> Rename the avsnittXX… folder in {folder} to the "
-            "episode (or add a folder for the next one). In the session project, "
-            "<i>Copy to…</i> that folder as avsnitt&lt;nr&gt;.kdenlive and <b>open the "
-            "copy</b>. Cut at the episode's guides and delete everything outside, including "
-            "the Comms tracks.</li>"
-            "<li><b>Choose the views.</b> Show the players' game videos side by side and keep "
-            "one at a time: cut between words, and switch a moment before someone starts on "
-            "something new. Only one view (one player plays, the others comment)? Nothing to "
-            "choose; skip to the next step. Jot moments in Document Notes as you go (a * "
-            "after the timestamp makes a YouTube chapter).</li>"
-            "<li><b>Finish</b> (below): intro and outro, ducked under the first and last "
-            "voice, a swoosh at every switch and the overlay showing whose view it is. Run it "
-            "again after any change to the edit, then reopen the project in Kdenlive.</li>"
-            "<li><b>Notes</b> (below): fill in the Titel and the other fields.</li>"
-            "<li><b>Render</b> in Kdenlive.</li></ol>",
+        rows = steps.recordings(s.session)
+        if not rows:
+            box.addWidget(message("No recordings in sources/ yet.", "info"))
+            return
+        cells = [
+            [
+                r.file,
+                r.player or "?",
+                *(mark(t in r.streams) for t in ("Voice audio", "Comms", "Game audio", "video")),
+                steps.clock(round(r.seconds * 100), 100) if r.seconds else "",
+                r.note,
+            ]
+            for r in rows
+        ]
+        headers = ["File", "Player", "Voice", "Comms", "Game", "Video", "Length", "Note"]
+        box.addWidget(table(headers, cells, note=True))
+
+    def _sync_page(self, box: QVBoxLayout, s: steps.State) -> None:
+        self._heading(
+            box,
+            "3  Sync",
+            f"Puts every recording on {link(s.project, 'the session project')}, lined up "
+            "on the call audio.<ol><li>Voice clips are grouped, and each game video with "
+            "its game audio; every track is slimmed down.</li><li>Then listen in Kdenlive "
+            "that the voices line up.</li></ol>Synced by hand? This step is done as soon as "
+            "the session project has clips.",
+        )
+        if s.synced:
+            box.addWidget(message("The session project has clips: synced.", "positive"))
+        elif not s.recordings:
+            box.addWidget(message("Add the recordings first (step 2).", "info"))
+        else:
+            for r in steps.recordings(s.session):
+                if r.note:
+                    box.addWidget(message(f"{escape(r.file)}: {escape(r.note)}"))
+        self._buttons(
+            box, ("Sync", lambda: self.sync(s.session), bool(s.recordings) and not s.synced)
+        )
+
+    def _marked_page(self, box: QVBoxLayout, s: steps.State) -> None:
+        self._heading(
+            box,
+            "4  Mark the episodes",
+            f"In {link(s.project, 'the session project')}, add a guide where each episode "
+            "starts, named after it: avsnitt230, avsnitt231, …",
+        )
+        box.addWidget(art("guides.svg"))
+        box.addWidget(
+            rich(
+                "<ol><li>Look about 20 minutes ahead, then for a joke or a natural break: "
+                "20–25 minutes each, or what the flow needs.</li><li>From now on the session "
+                "project is the single source of truth: fix sound and episode borders "
+                "there.</li></ol>"
+            )
+        )
+        marked = [e for e in s.episodes if e.start is not None]
+        if marked:
+            box.addWidget(
+                table(
+                    ["Episode", "Starts at"],
+                    [[e.name, steps.clock(e.start, s.fps)] for e in marked],
+                )
+            )
+        else:
+            box.addWidget(message("No guides named avsnitt… in the session project yet.", "info"))
+
+    def _episodes_page(self, box: QVBoxLayout, s: steps.State) -> None:
+        self._heading(
+            box,
+            "5–9  Episodes",
+            "Each episode goes through the same steps: <b>5</b> make its project, <b>6</b> "
+            "choose the views, <b>7</b> Finish, <b>8</b> notes, <b>9</b> render. "
+            "Double-click an episode for its page.",
         )
         if not s.episodes:
-            step(
-                False, "      no episodes yet", "They show up here once marked (step 4).", sub=True
-            )
-        for e in s.episodes:
-            has = e.project is not None
-            where = "" if e.start is None else f" · starts at {steps.clock(e.start, s.fps)}"
-            step(
-                e.finished,
+            box.addWidget(message("Episodes show up here once marked (step 4).", "info"))
+            return
+        rows = [
+            [
                 e.name,
-                (
-                    link(e.project, f"Open {e.project.name}")
-                    if has
-                    else f"No {escape(e.name)}.kdenlive yet (step 5)"
-                )
-                + where,
-                ("Analyse", lambda _=False, p=e.project: self.finish(p, "analyse"), has),
-                (
-                    f"Preview {PREVIEW} s",
-                    lambda _=False, p=e.project: self.finish(p, "preview"),
-                    has,
-                ),
-                ("Finish", lambda _=False, p=e.project: self.finish(p, "finish"), has),
-                sub=True,
+                steps.clock(e.start, s.fps) if e.start is not None else "not marked",
+                e.project.name if e.project else "not made yet",
+                mark(e.finished),
+            ]
+            for e in s.episodes
+        ]
+        view = table(["Episode", "Starts at", "5  Project", "7  Finished"], rows)
+        view.cellDoubleClicked.connect(lambda r, _: self.go(f"ep:{s.episodes[r].name}"))
+        box.addWidget(view)
+        box.addWidget(
+            rich(
+                f"8 Notes: {link(s.md, 'the notes file')} is "
+                + ("up to date." if s.notes_current else "older than an episode project.")
             )
+        )
+
+    def _episode_page(self, box: QVBoxLayout, s: steps.State, e: steps.Episode) -> None:
+        where = (
+            f"starts at {steps.clock(e.start, s.fps)} in the session project"
+            if e.start is not None
+            else "has no guide in the session project"
+        )
+        project = link(e.project, f"Open {e.project.name}") if e.project else ""
+        self._heading(box, e.name, f"{escape(e.name)} {where}. {project}")
+        has = e.project is not None
+
+        def part(number: int, title: str, text: str, done: bool | None = None) -> None:
+            status = "" if done is None else f"{mark(done)} "
+            box.addWidget(rich(f"<b>{status}{number}  {escape(title)}</b><br>{text}"))
+
+        part(
+            5,
+            "Make its project",
+            f"Rename the avsnittXX… folder to {escape(e.name)} (or add a folder for it). In the "
+            f"session project, <i>Copy to…</i> that folder as {escape(e.name)}.kdenlive and "
+            "<b>open the copy</b>. Cut at the episode's guides and delete everything outside, "
+            "including the Comms tracks.",
+            has,
+        )
+        box.addWidget(art("copy.svg"))
+        part(
+            6,
+            "Choose the views",
+            "Keep one player's game video at a time: cut between words, and switch a moment "
+            "before someone starts on something new. Only one view? Nothing to choose. Jot "
+            "moments in Document Notes as you go (a * after the timestamp makes a YouTube "
+            "chapter).",
+        )
+        box.addWidget(art("views.svg"))
+        part(
+            7,
+            "Finish",
+            "Intro and outro, ducked under the first and last voice, a swoosh at every switch "
+            "and the overlay showing whose view it is. Analyse first if you like, or look at "
+            f"{PREVIEW} s. Run it again after any change to the edit, then reopen the project.",
+            e.finished,
+        )
+        self._buttons(
+            box,
+            ("Analyse", lambda: self.finish(e.project, "analyse"), has),
+            (f"Preview {PREVIEW} s", lambda: self.finish(e.project, "preview"), has),
+            ("Finish", lambda: self.finish(e.project, "finish"), has),
+        )
+        part(8, "Notes", "Gather the Document Notes into the notes file and fill in the Titel.")
+        self._buttons(box, ("Go to Notes", lambda: self.go("notes"), True))
+        part(9, "Render", "Render the episode in Kdenlive.")
+        if not has:
+            box.insertWidget(2, message(f"No {escape(e.name)}.kdenlive yet: step 5.", "info"))
+
+    def _notes_page(self, box: QVBoxLayout, s: steps.State) -> None:
+        self._heading(
+            box,
+            "8  Notes (all episodes)",
+            f"Gathers every episode's Document Notes into {link(s.md, 'the notes file')}: "
+            "chapters, Bryggpromenader, the checklist. Then fill in the Titel and the other "
+            "fields there. Dry run shows what would change.",
+        )
         made = [e for e in s.episodes if e.project]
-        step(
-            s.notes_current if made else False,
-            "8. Notes",
-            f"Gathers every episode's Document Notes into {link(s.md, 'the notes file')} "
-            "(chapters, Bryggpromenader, the checklist). Then fill in the Titel and the other "
-            "fields there.",
+        if not made:
+            box.addWidget(message("No episode projects yet (step 5).", "info"))
+        elif s.notes_current:
+            box.addWidget(
+                message("The notes file is newer than every episode project.", "positive")
+            )
+        self._buttons(
+            box,
             ("Update notes", lambda: self.notes(s.session, False), bool(made)),
             ("Dry run", lambda: self.notes(s.session, True), bool(made)),
         )
@@ -370,20 +728,17 @@ class Window(QMainWindow):
                 if theme
                 else f'Theme: none (see <a href="{REPO}/blob/main/theme.example.toml">'
                 "theme.example.toml</a>)",
-                link(s.crew_file, "Crew file (mixer, game software)"),
+                link(s.crew_file, "Crew file"),
                 link(s.crew_file.parent, "_assets/ folder"),
             ]
             mine = [
                 link(s.session, "Folder"),
                 link(s.md, "Notes file (.md)"),
-                link(s.project, "Kdenlive project"),
+                link(s.project, "Session project"),
             ]
             html += "<b>This session</b><br>" + "<br>".join(mine) + "<br><br>"
             html += "<b>Every session</b><br>" + "<br>".join(show) + "<br><br>"
-        html += f'<a href="{REPO}#readme">README</a>'
-        if s and s.problems:
-            html += "<br><br><b>Problems</b><br>" + "<br>".join(escape(p) for p in s.problems)
-        return html
+        return html + f'<a href="{REPO}#readme">README</a>'
 
     # ── running commands ─────────────────────────────────────────────────────
 
@@ -393,7 +748,7 @@ class Window(QMainWindow):
 
             return steps.sync_report(sync_mod.sync_session(session)), None
 
-        self.start("Sync", work)
+        self.start("sync", "Sync", work)
 
     def notes(self, session: Path, dry_run: bool) -> None:
         def work(progress):
@@ -401,7 +756,7 @@ class Window(QMainWindow):
 
             return notes.process_session(session, dry_run=dry_run).lines, None
 
-        self.start("Notes (dry run)" if dry_run else "Notes", work)
+        self.start("notes", "Notes (dry run)" if dry_run else "Notes", work)
 
     def finish(self, project: Path, mode: str) -> None:
         def work(progress):
@@ -418,9 +773,12 @@ class Window(QMainWindow):
             backup = finish.apply(analysis, overlay)
             return lines + [steps.updated_report(project, backup)], None
 
-        self.start(f"{mode.capitalize()} {project.parent.name}", work)
+        name = project.parent.name
+        self.start(f"ep:{name}", f"{mode.capitalize()} {name}", work)
 
-    def start(self, title: str, work: Work) -> None:
+    def start(self, key: str, title: str, work: Work) -> None:
+        self.job_key = key
+        self.outputs[key] = []  # this run's output replaces the last one's
         self.say(f"── {title}")
         self.centralWidget().setEnabled(False)
         self.bar.setRange(0, 0)  # busy until the first progress report
@@ -447,7 +805,7 @@ class Window(QMainWindow):
         self.error(message)
 
     def ended(self) -> None:
-        self.job = None
+        self.job = self.job_key = None
         self.bar.hide()
         self.centralWidget().setEnabled(True)
         self.refresh()
@@ -455,7 +813,10 @@ class Window(QMainWindow):
     # ── output ───────────────────────────────────────────────────────────────
 
     def say(self, text: str) -> None:
-        if not self.log_opened:  # open it for the first output; after that it's yours
+        """Into the log (the whole history) and, during a command, its step's output."""
+        if self.job_key:
+            self.outputs[self.job_key].append(text)
+        if not self.log_opened and not self.job_key:  # the step's page shows its output
             self.log_opened = True
             top, bottom = self.split.sizes()
             if not bottom:

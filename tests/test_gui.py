@@ -80,6 +80,14 @@ def test_unreadable_project_is_a_problem_not_a_crash(tmp_path):
     assert s.problems and not s.episodes[0].finished
 
 
+def page_text(window):
+    from PySide6.QtWidgets import QLabel, QPlainTextEdit
+
+    page = window.page.widget()
+    labels = [w.text() for w in page.findChildren(QLabel)]
+    return "\n".join(labels + [w.toPlainText() for w in page.findChildren(QPlainTextEdit)])
+
+
 def test_window_opens_and_closes(tmp_path, monkeypatch):
     pytest.importorskip("PySide6")  # the gui extra
     monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
@@ -96,11 +104,27 @@ def test_window_opens_and_closes(tmp_path, monkeypatch):
     assert "Theme: none" in window.links.text()
     window.show()
     assert window.split.sizes()[1] == 0  # the log starts minimized
+    assert window.selected == "recordings"  # the first step not done
+    assert "No recordings" in page_text(window)
+    tree_text = [i.text(0) for i in window.tree.findItems("*", gui.Qt.MatchFlag.MatchWildcard)]
+    assert tree_text[0].startswith("✓") and tree_text[1].startswith("▶")
+    window.go("session")  # the folder tree, with the session's files in it
+    folders = window.page.widget().findChild(gui.QTreeWidget)
+    names = [
+        i.text(0)
+        for i in folders.findItems(
+            "*", gui.Qt.MatchFlag.MatchWildcard | gui.Qt.MatchFlag.MatchRecursive
+        )
+    ]
+    assert "sources/" in names and f"{session.name}.kdenlive" in names
+    window.go("notes")
     window.notes(session, dry_run=True)  # nothing to merge yet: the job ends at once
     while window.job:
         app.processEvents()
     assert "no episode subdirectories found" in window.log.toPlainText()
-    assert window.split.sizes()[1] > 0  # and opens for the first output
+    assert window.selected == "notes"  # kept across the refresh after the command
+    assert "no episode subdirectories found" in page_text(window)  # on the step's page
+    assert window.split.sizes()[1] == 0  # so the log stays out of the way
     dialog = gui.NewSessionDialog(window, 3, {"Ozone": ["* Minecraft 1.12.2"]})
     assert dialog.answers()[1] == 3
     assert dialog.answers()[2][0] == "* Minecraft 1.12.2"  # the first game by default
