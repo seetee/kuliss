@@ -35,6 +35,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSpinBox,
     QSplitter,
+    QStyledItemDelegate,
     QTableWidget,
     QTableWidgetItem,
     QTreeWidget,
@@ -93,6 +94,19 @@ def art(name: str) -> QSvgWidget:
     return picture
 
 
+class Roomy(QStyledItemDelegate):
+    """Rows with some air: the default ones are tight."""
+
+    def sizeHint(self, option, index):
+        size = super().sizeHint(option, index)
+        size.setHeight(size.height() + 10)
+        return size
+
+
+def roomy(view: QAbstractItemView) -> None:
+    view.setItemDelegate(Roomy(view))
+
+
 def fit(view: QAbstractItemView, rows: int) -> None:
     """No inner scrollbars: the page scrolls, not the list."""
     view.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -114,6 +128,7 @@ def table(headers: list[str], rows: list[list[str]], note=False) -> QTableWidget
     view.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
     view.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
     view.setWordWrap(False)
+    roomy(view)
     for r, cells in enumerate(rows):
         for c, text in enumerate(cells):
             item = QTableWidgetItem(text)
@@ -232,6 +247,7 @@ class Window(QMainWindow):
         self.tree.setHeaderHidden(True)
         self.tree.setRootIsDecorated(False)
         self.tree.setIndentation(18)
+        roomy(self.tree)
         self.tree.currentItemChanged.connect(
             lambda item, _: item and self.show_page(item.data(0, KEY))
         )
@@ -367,8 +383,8 @@ class Window(QMainWindow):
             ("recordings", bool(s.recordings), "2  Recordings"),
             ("sync", s.synced, "3  Sync"),
             ("marked", s.marked, "4  Mark the episodes"),
-            ("episodes", episodes_done, "5–9  Episodes"),
-            ("notes", notes_done, "8  Notes (all episodes)"),
+            ("episodes", episodes_done, "5  Edit each episode"),
+            ("notes", notes_done, "6  Notes"),
         ]
         current = next((key for key, done, _ in order if not done), "notes")
         if current == "episodes":
@@ -484,6 +500,7 @@ class Window(QMainWindow):
     def _folder_tree(self, s: steps.State) -> QTreeWidget:
         tree = QTreeWidget()
         tree.setHeaderLabels(["Name", "What it is"])
+        roomy(tree)
         tree.itemActivated.connect(
             lambda item, _: (
                 item.data(0, KEY)
@@ -507,35 +524,43 @@ class Window(QMainWindow):
 
         game, crew = s.session.parent, s.crew_file
         show = crew.parent.parent
-        top = add(tree, show, "the show") if game.parent == show else None
+        top = (
+            add(tree, show, "the show: every game, and the _assets/ they share")
+            if game.parent == show
+            else None
+        )
         if top:
-            assets = add(top, crew.parent, "shared by every game")
-            add(assets, crew, "crew file: mixer, game software, archive")
+            assets = add(top, crew.parent, "shared by every game: avatars, sounds, the crew file")
+            add(assets, crew, "crew file: mixer levels, game software, where the archive is")
         else:
-            add(tree, crew, "crew file")
-        g = add(top or tree, game, "the game: its sessions and look")
-        add(g, s.theme or game / "theme.toml", "the game's look (overlay, intro, outro)")
-        session = add(g, s.session, "this session")
+            add(tree, crew, "crew file: mixer levels, game software, where the archive is")
+        g = add(top or tree, game, "the game: its sessions and its theme")
+        add(g, s.theme or game / "theme.toml", "the game's look: avatars, overlay, intro and outro")
+        session = add(g, s.session, "this session: one recording, cut into episodes")
         n = len(s.recordings)
-        add(session, s.session / "sources", f"{n} recording{'s' * (n != 1)}")
-        add(session, s.session / "kortisar", "shorts and TikToks")
+        add(
+            session,
+            s.session / "sources",
+            f"everyone's recordings ({n}), synced onto the session project",
+        )
+        add(session, s.session / "kortisar", "shorts and TikToks cut from this session")
         folders = sorted(
             d for d in s.session.iterdir() if d.is_dir() and d.name.startswith(EPISODE_PREFIX)
         )
         for folder in folders:
-            placeholder = folder.name.startswith(f"{EPISODE_PREFIX}XX")
-            item = add(
-                session,
-                folder,
-                "rename it to the first episode" if placeholder else "an episode",
-            )
-            episode = next(
-                (e for e in s.episodes if e.project and e.project.parent == folder), None
-            )
-            if episode:
-                add(item, episode.project, "its project")
-        add(session, s.md, "notes: titles, chapters, checklist")
-        add(session, s.project, "session project: every recording, in sync")
+            episode = next((e for e in s.episodes if e.name == folder.name), None)
+            if folder.name.startswith(f"{EPISODE_PREFIX}XX"):
+                what = "placeholder: rename it to the first episode, e.g. avsnitt230"
+            elif episode and episode.start is not None:
+                what = f"episode, from {steps.clock(episode.start, s.fps)} in the session project"
+            else:
+                what = "episode folder (no guide for it in the session project)"
+            item = add(session, folder, what)
+            if episode and episode.project:
+                state = "finished by kuliss" if episode.finished else "not finished by kuliss yet"
+                add(item, episode.project, f"the episode's own edit, {state}")
+        add(session, s.md, "notes: titles, chapters and the checklist for YouTube")
+        add(session, s.project, "session project: every recording in sync, a guide per episode")
         tree.expandAll()
         tree.resizeColumnToContents(0)
         fit(tree, count)
@@ -618,90 +643,122 @@ class Window(QMainWindow):
     def _episodes_page(self, box: QVBoxLayout, s: steps.State) -> None:
         self._heading(
             box,
-            "5–9  Episodes",
-            "Each episode goes through the same steps: <b>5</b> make its project, <b>6</b> "
-            "choose the views, <b>7</b> Finish, <b>8</b> notes, <b>9</b> render. "
-            "Double-click an episode for its page.",
+            "5  Edit each episode",
+            "This is the part kuliss can't do for you: turning one stretch of the session "
+            "into an episode. Take one episode at a time, in order, through 5a–5d; kuliss "
+            "takes over at 5c. Double-click an episode for its page, with its buttons.",
         )
         if not s.episodes:
             box.addWidget(message("Episodes show up here once marked (step 4).", "info"))
-            return
-        rows = [
-            [
-                e.name,
-                steps.clock(e.start, s.fps) if e.start is not None else "not marked",
-                e.project.name if e.project else "not made yet",
-                mark(e.finished),
+        else:
+            rows = [
+                [
+                    e.name,
+                    steps.clock(e.start, s.fps) if e.start is not None else "no guide",
+                    e.project.name if e.project else "not made yet",
+                    mark(e.finished),
+                ]
+                for e in s.episodes
             ]
-            for e in s.episodes
-        ]
-        view = table(["Episode", "Starts at", "5  Project", "7  Finished"], rows)
-        view.cellDoubleClicked.connect(lambda r, _: self.go(f"ep:{s.episodes[r].name}"))
-        box.addWidget(view)
-        box.addWidget(
-            rich(
-                f"8 Notes: {link(s.md, 'the notes file')} is "
-                + ("up to date." if s.notes_current else "older than an episode project.")
-            )
-        )
+            view = table(["Episode", "Starts at", "5a  Its project", "5c  Finished"], rows)
+            view.cellDoubleClicked.connect(lambda r, _: self.go(f"ep:{s.episodes[r].name}"))
+            box.addWidget(view)
+        self._substeps(box, s, None)
 
     def _episode_page(self, box: QVBoxLayout, s: steps.State, e: steps.Episode) -> None:
         where = (
-            f"starts at {steps.clock(e.start, s.fps)} in the session project"
+            f"Starts at {steps.clock(e.start, s.fps)} in the session project."
             if e.start is not None
-            else "has no guide in the session project"
+            else "Has no guide in the session project."
         )
         project = link(e.project, f"Open {e.project.name}") if e.project else ""
-        self._heading(box, e.name, f"{escape(e.name)} {where}. {project}")
-        has = e.project is not None
+        self._heading(box, f"5  {e.name}", f"{where} {project}")
+        if not e.project:
+            box.addWidget(message(f"No {escape(e.name)}.kdenlive yet: start with 5a.", "info"))
+        self._substeps(box, s, e)
 
-        def part(number: int, title: str, text: str, done: bool | None = None) -> None:
-            status = "" if done is None else f"{mark(done)} "
-            box.addWidget(rich(f"<b>{status}{number}  {escape(title)}</b><br>{text}"))
+    def _substeps(self, box: QVBoxLayout, s: steps.State, e: steps.Episode | None) -> None:
+        """5a–5d, the same on step 5's page and on each episode's (with its name, its
+        status and the Finish buttons)."""
+        name = e.name if e else "avsnitt230"
+        has = bool(e and e.project)
+
+        def part(label: str, title: str, html: str, done: bool | None = None) -> None:
+            status = "" if e is None or done is None else f"{mark(done)}  "
+            heading = QLabel(f"<b>{status}{label}  {escape(title)}</b>")
+            font = heading.font()
+            font.setPointSizeF(font.pointSizeF() * 1.15)
+            heading.setFont(font)
+            box.addSpacing(8)
+            box.addWidget(heading)
+            box.addWidget(rich(html))
 
         part(
-            5,
-            "Make its project",
-            f"Rename the avsnittXX… folder to {escape(e.name)} (or add a folder for it). In the "
-            f"session project, <i>Copy to…</i> that folder as {escape(e.name)}.kdenlive and "
-            "<b>open the copy</b>. Cut at the episode's guides and delete everything outside, "
-            "including the Comms tracks.",
+            "5a",
+            "Make the episode's project",
+            "<ol>"
+            f"<li>Rename the avsnittXX… placeholder folder to <b>{name}</b>. For the next "
+            "episodes, make a new folder with the number one up.</li>"
+            "<li>In the session project, use <i>Copy to…</i> and save the copy in that "
+            f"folder as <b>{name}.kdenlive</b>.</li>"
+            "<li><b>Open the copy.</b> Important: from here on you edit the copy; the session "
+            "project stays whole, as the single source of truth.</li>"
+            "<li>Cut at this episode's guide and at the next one, and delete everything "
+            "before and after.</li>"
+            "<li>Delete what the episode doesn't use: the Comms tracks, and anything else "
+            "only the session needs.</li>"
+            "</ol>",
             has,
         )
         box.addWidget(art("copy.svg"))
         part(
-            6,
+            "5b",
             "Choose the views",
-            "Keep one player's game video at a time: cut between words, and switch a moment "
-            "before someone starts on something new. Only one view? Nothing to choose. Jot "
-            "moments in Document Notes as you go (a * after the timestamp makes a YouTube "
-            "chapter).",
+            "<ol>"
+            "<li>Put the monitor on your second screen and split it so you see the players' "
+            "game videos side by side. Hide Assets and the other tracks meanwhile.</li>"
+            "<li>Go through the episode and choose whose view is shown; cut away the other "
+            "game videos there.</li>"
+            "<li>Cut between words or sentences when you can, and switch to someone a moment "
+            "before or after they start talking about something new.</li>"
+            "<li>Done when exactly one view is left all through the episode. Only one view "
+            "in this game (one plays, the others comment)? Nothing to do here.</li>"
+            "<li>Jot good moments in Kdenlive's Document Notes as you go. A * right after "
+            "the timestamp makes it a YouTube chapter.</li>"
+            "</ol>",
         )
         box.addWidget(art("views.svg"))
         part(
-            7,
-            "Finish",
-            "Intro and outro, ducked under the first and last voice, a swoosh at every switch "
-            "and the overlay showing whose view it is. Analyse first if you like, or look at "
-            f"{PREVIEW} s. Run it again after any change to the edit, then reopen the project.",
-            e.finished,
+            "5c",
+            "Finish (kuliss)",
+            "What used to be done by hand: the intro and outro, picture and sound, ducked "
+            "under the first and last voice; a swoosh at every switch of view; and the name "
+            "tag showing whose view it is, for as long as it is shown. <i>Analyse</i> only "
+            f"counts the switches; <i>Preview {PREVIEW} s</i> renders the start to look at. "
+            "Run Finish again after any change to the edit, then reopen the project in "
+            "Kdenlive without saving it first.",
+            bool(e and e.finished),
         )
-        self._buttons(
-            box,
-            ("Analyse", lambda: self.finish(e.project, "analyse"), has),
-            (f"Preview {PREVIEW} s", lambda: self.finish(e.project, "preview"), has),
-            ("Finish", lambda: self.finish(e.project, "finish"), has),
+        if e:
+            self._buttons(
+                box,
+                ("Analyse", lambda: self.finish(e.project, "analyse"), has),
+                (f"Preview {PREVIEW} s", lambda: self.finish(e.project, "preview"), has),
+                ("Finish", lambda: self.finish(e.project, "finish"), has),
+            )
+        part(
+            "5d",
+            "Render",
+            "Render the episode in Kdenlive. Then on to the next episode, back to 5a. When "
+            "every episode is done: step 6, Notes.",
         )
-        part(8, "Notes", "Gather the Document Notes into the notes file and fill in the Titel.")
-        self._buttons(box, ("Go to Notes", lambda: self.go("notes"), True))
-        part(9, "Render", "Render the episode in Kdenlive.")
-        if not has:
-            box.insertWidget(2, message(f"No {escape(e.name)}.kdenlive yet: step 5.", "info"))
+        if e:
+            self._buttons(box, ("Go to 6 Notes", lambda: self.go("notes"), True))
 
     def _notes_page(self, box: QVBoxLayout, s: steps.State) -> None:
         self._heading(
             box,
-            "8  Notes (all episodes)",
+            "6  Notes",
             f"Gathers every episode's Document Notes into {link(s.md, 'the notes file')}: "
             "chapters, Bryggpromenader, the checklist. Then fill in the Titel and the other "
             "fields there. Dry run shows what would change.",
