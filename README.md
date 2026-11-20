@@ -128,7 +128,7 @@ The steps above are a list on the left of the window, with ✓ for what is done 
 from the files each time the window gets focus) and ▶ on the next one. It opens on that step;
 click any other to go back. The step's page on the right says what to do and shows what is
 there: the session folder as a tree (grey for what is missing), the recordings with the
-streams sync will use, the episode guides, a table of every episode, and drawings of marking
+streams sync will use, the episode markers, a table of every episode, and drawings of marking
 the episodes, making an episode's project and choosing the views. Problems show on the step
 they belong to, and each command's output on its own page. Links open files in your default
 programs (on Linux whatever `xdg-open` picks: Kate for text, Kdenlive for projects, Dolphin

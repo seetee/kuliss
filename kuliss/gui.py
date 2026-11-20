@@ -554,13 +554,13 @@ class Window(QMainWindow):
             elif episode and episode.start is not None:
                 what = f"episode, from {steps.clock(episode.start, s.fps)} in the session project"
             else:
-                what = "episode folder (no guide for it in the session project)"
+                what = "episode folder (no marker for it in the session project)"
             item = add(session, folder, what)
             if episode and episode.project:
                 state = "finished by kuliss" if episode.finished else "not finished by kuliss yet"
                 add(item, episode.project, f"the episode's own edit, {state}")
         add(session, s.md, "notes: titles, chapters and the checklist for YouTube")
-        add(session, s.project, "session project: every recording in sync, a guide per episode")
+        add(session, s.project, "session project: every recording in sync, a marker per episode")
         tree.expandAll()
         tree.resizeColumnToContents(0)
         fit(tree, count)
@@ -617,10 +617,11 @@ class Window(QMainWindow):
         self._heading(
             box,
             "4  Mark the episodes",
-            f"In {link(s.project, 'the session project')}, add a guide where each episode "
-            "starts, named after it: avsnitt230, avsnitt231, …",
+            f"In {link(s.project, 'the session project')}, add a marker where each episode "
+            "starts, named after it: avsnitt230, avsnitt231, … Put the playhead there and "
+            "press <b>[G]</b> to add a marker (or remove the one under it), then name it.",
         )
-        box.addWidget(art("guides.svg"))
+        box.addWidget(art("markers.svg"))
         box.addWidget(
             rich(
                 "<ol><li>Look about 20 minutes ahead, then for a joke or a natural break: "
@@ -638,7 +639,7 @@ class Window(QMainWindow):
                 )
             )
         else:
-            box.addWidget(message("No guides named avsnitt… in the session project yet.", "info"))
+            box.addWidget(message("No markers named avsnitt… in the session project yet.", "info"))
 
     def _episodes_page(self, box: QVBoxLayout, s: steps.State) -> None:
         self._heading(
@@ -654,7 +655,7 @@ class Window(QMainWindow):
             rows = [
                 [
                     e.name,
-                    steps.clock(e.start, s.fps) if e.start is not None else "no guide",
+                    steps.clock(e.start, s.fps) if e.start is not None else "no marker",
                     e.project.name if e.project else "not made yet",
                     mark(e.finished),
                 ]
@@ -669,7 +670,7 @@ class Window(QMainWindow):
         where = (
             f"Starts at {steps.clock(e.start, s.fps)} in the session project."
             if e.start is not None
-            else "Has no guide in the session project."
+            else "Has no marker in the session project."
         )
         project = link(e.project, f"Open {e.project.name}") if e.project else ""
         self._heading(box, f"5  {e.name}", f"{where} {project}")
@@ -703,7 +704,7 @@ class Window(QMainWindow):
             f"folder as <b>{name}.kdenlive</b>.</li>"
             "<li><b>Open the copy.</b> Important: from here on you edit the copy; the session "
             "project stays whole, as the single source of truth.</li>"
-            "<li>Cut at this episode's guide and at the next one, and delete everything "
+            "<li>Cut at this episode's marker and at the next one, and delete everything "
             "before and after.</li>"
             "<li>Delete what the episode doesn't use: the Comms tracks, and anything else "
             "only the session needs.</li>"
@@ -715,8 +716,10 @@ class Window(QMainWindow):
             "5b",
             "Choose the views",
             "<ol>"
-            "<li>Put the monitor on your second screen and split it so you see the players' "
-            "game videos side by side. Hide Assets and the other tracks meanwhile.</li>"
+            "<li>Show the Project Monitor on your second screen: <b>Monitor → Switch Monitor "
+            "Fullscreen [F11]</b>. Then <b>Monitor → Multitrack view [F12]</b> shows the "
+            "players' game videos side by side. Hide Assets and the other tracks "
+            "meanwhile.</li>"
             "<li>Go through the episode and choose whose view is shown; cut away the other "
             "game videos there.</li>"
             "<li>Cut between words or sentences when you can, and switch to someone a moment "
@@ -752,8 +755,6 @@ class Window(QMainWindow):
             "Render the episode in Kdenlive. Then on to the next episode, back to 5a. When "
             "every episode is done: step 6, Notes.",
         )
-        if e:
-            self._buttons(box, ("Go to 6 Notes", lambda: self.go("notes"), True))
 
     def _notes_page(self, box: QVBoxLayout, s: steps.State) -> None:
         self._heading(
