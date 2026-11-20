@@ -89,8 +89,11 @@ Built as proposed (`gui.py`, `steps.py`, `tests/test_gui.py`). Still to do:
       Dolphin, the video player for the preview), and that a running Finish shows progress.
 - [ ] **Windows:** the same, and that `.toml` has a program to open it (none is set by
       default; associate it with Notepad or Kate if the link does nothing).
-- [ ] Step 2 lists the `.mkv` names only; showing each file's player (and a bad stream
-      title) before Sync would need `session.probe`, which warns on every refresh.
+- [ ] **Kenneth:** the new layout (2026-11-20, steps on the left, pages on the right): click
+      through every page on a real session; are the drawings in steps 4–6 right, and is
+      anything still hard to find?
+- [ ] Step 2 shows "?" as the player for a file sync skips (probe gives up before naming
+      it); fill it from the file name only if it confuses.
 - [ ] Analyse, Preview and Finish each analyse again (14 s); keep the `Analysis` between
       them only if that bites.
 

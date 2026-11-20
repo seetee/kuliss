@@ -124,14 +124,18 @@ uv run --extra gui kuliss gui            # from a clone
 uv tool install --force "kuliss[gui] @ git+https://github.com/seetee/kuliss.git"   # or add the extra to an installed kuliss
 ```
 
-The window lists the steps above for one session, with ✓ for what is done (worked out from
-the files each time the window gets focus), a button for each command, and links that open
-the session folder, `sources/`, the projects, the session `.md`, the theme and the crew file
-in your default programs (on Linux whatever `xdg-open` picks: Kate for text, Kdenlive for
-projects, Dolphin for folders). It opens the session you had last, or pass a folder:
+The steps above are a list on the left of the window, with ✓ for what is done (worked out
+from the files each time the window gets focus) and ▶ on the next one. It opens on that step;
+click any other to go back. The step's page on the right says what to do and shows what is
+there: the session folder as a tree (grey for what is missing), the recordings with the
+streams sync will use, the episode guides, a table of every episode, and drawings of marking
+the episodes, making an episode's project and choosing the views. Problems show on the step
+they belong to, and each command's output on its own page. Links open files in your default
+programs (on Linux whatever `xdg-open` picks: Kate for text, Kdenlive for projects, Dolphin
+for folders). It opens the session you had last, or pass a folder:
 `kuliss gui ~/documents/samkvam.online`. Finish's *Preview 90 s* plays the preview when it is
-done. The commands are the same as on the command line; warnings and results show in the
-log at the bottom.
+done. The commands are the same as on the command line; the log at the bottom keeps the
+whole history.
 
 ## `kuliss finish`: overlay, sounds, intro and outro
 
