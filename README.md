@@ -26,9 +26,9 @@ uv run kuliss finish ~/episodes/avsnitt217/avsnitt217.kdenlive --dry-run
 
 Update later with `uv tool upgrade kuliss`.
 
-### Install and run your first project on Windows
+### Install and run your first session on Windows
 
-kuliss runs on Windows 10 and 11 too; the automated tests run there on every change. A full episode has not yet been finished on Windows, so check the first result carefully.
+kuliss runs on Windows 10 and 11 too; the automated tests, the window's included, run there on every change. No session has been edited on Windows yet, so treat the first one as a test and check every result.
 
 1. **Install uv.** Open PowerShell (not as administrator) and run the command from the [uv installation page](https://docs.astral.sh/uv/getting-started/installation/):
 
@@ -37,27 +37,34 @@ kuliss runs on Windows 10 and 11 too; the automated tests run there on every cha
    ```
 
    Close PowerShell and open a new one, so it finds `uv`.
-2. **Install kuliss.** This downloads Python and everything else kuliss needs; git is not required:
+2. **Install kuliss with its window.** This downloads Python and everything else kuliss needs; git is not required:
 
    ```powershell
-   uv tool install https://github.com/seetee/kuliss/archive/refs/heads/main.zip
+   uv tool install "kuliss[gui] @ https://github.com/seetee/kuliss/archive/refs/heads/main.zip"
    kuliss --help
    ```
 
    If `kuliss` is not found, run `uv tool update-shell` and open a new PowerShell. To update later, run the install command again with `--force` added.
-3. **Get the theme in place.** Put the game's `theme.toml` (see [Making a theme](#making-a-theme)) next to your episode's `.kdenlive` file or in a folder above it, together with the images and sounds it names. The paths inside a theme are relative to the theme file and use `/`, so the same theme works on Linux and Windows.
-4. **Check, preview, finish.** Close the project in Kdenlive, then, with the path in quotes if it has spaces:
+3. **Kdenlive 26.08 or newer.** `kuliss new` writes the session project in the format of Kdenlive 26.08; an older Kdenlive may not open it.
+4. **Get the show folder.** Copy the parts of the show folder that kuliss reads (see [Where files live](#where-files-live)), keeping the same layout:
+   - `_assets/kuliss.toml`, the crew file;
+   - every file the game's theme names: for Samkväm the avatars, the switch sound, the intro and outro music and video and the outro card (about 200 MB, most of it the intro video);
+   - the game's folder with its `theme.toml`, e.g. `samkvam.online\plateup\theme.toml`.
+
+   The paths inside a theme are relative and use `/`, so the same theme works on Linux and Windows.
+5. **Open the window** on the game's folder, with the path in quotes if it has spaces:
 
    ```powershell
-   cd "C:\Users\you\Videos\Samkväm\session_28_2026-11-01\avsnitt228"
-   kuliss finish avsnitt228.kdenlive --dry-run      # does it find every player?
-   kuliss finish avsnitt228.kdenlive --preview 90   # look at avsnitt228-overlay-preview.mkv
-   kuliss finish avsnitt228.kdenlive                # render and update the project
+   kuliss gui "D:\samkvam.online\plateup"
    ```
 
-   Open the project in Kdenlive again afterwards. A backup of the old version, `avsnitt228.kdenlive.<date>-<time>.bak`, sits next to it.
+   Then follow its steps from *New session…*: put the recordings in `sources\`, Sync, set the markers, edit each episode and Finish it. Every command writes a backup next to the file it changes (`<name>.<date>-<time>.bak`).
 
-Work on a copy the first time. If the crew moves projects between Linux and Windows, check that Kdenlive still finds every clip before running kuliss; that case has not been tested.
+Notes for Windows:
+- Windows has no program set for `.toml` files, so the window's links to the theme and the crew file do nothing until you pick one: right-click a `.toml` file, *Open with*, choose Notepad (or Kate) and tick *Always*.
+- If the crew file names an `archive` folder that isn't on this computer, `kuliss new` warns that it counts only the sessions it can see. Check the session number in the *New session* dialog.
+- Don't move a project between Linux and Windows halfway through: Kdenlive may not find its clips. That case has not been tested.
+- Without the window, the same steps are `kuliss new`, `kuliss sync`, `kuliss finish <episode>.kdenlive` (with `--dry-run` or `--preview 90` first) and `kuliss notes`.
 
 ## Where files live
 
