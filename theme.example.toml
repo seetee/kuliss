@@ -4,7 +4,7 @@
 # assets = "../_assets"         # the folder every other path is relative to: set it once,
 #                               # then write "avatars/kenneth.png" instead of "../_assets/avatars/…"
 
-# Image, sound and video formats and sizes: see "Making a theme" in README.md.
+# Image, sound and video formats and sizes: see "Themes" in README.md.
 sound    = "../_assets/namecard/60003__qubodup__loud-swosh-16.flac"  # plays on every view switch
 # backdrop = "backdrop.png"     # behind the avatars; omitted = dark translucent panel
 #                               # (backdrop.example.png in the repo: 900 x 350, to start from)

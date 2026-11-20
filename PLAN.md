@@ -39,12 +39,12 @@ For Kenneth, in this order:
 - [ ] **Overlap warning.** Put one of your own clips on `Assets` audio where a swoosh would
       go and run again. Expect a warning ("switch sound at MM:SS"), the swoosh left out,
       and your clip untouched.
-- [ ] **Windows.** Follow the README's "Install and run your first project on Windows"
+- [ ] **Windows.** Follow the README's "Windows 10 and 11"
       exactly; note any step that fails or is unclear.
 - [ ] **Linux ↔ Windows** (only if projects travel). Open a project saved on the other
       system and check that Kdenlive's missing-clips dialog finds everything when pointed at
       the show folder.
-- [ ] **Theme from scratch.** Build one using only the README's "Making a theme"; anything
+- [ ] **Theme from scratch.** Build one using only the README's "Themes"; anything
       you had to guess is a gap in the docs.
 
 The session workflow:
