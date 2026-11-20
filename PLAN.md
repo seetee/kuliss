@@ -89,8 +89,9 @@ Built as proposed (`gui.py`, `steps.py`, `tests/test_gui.py`). Still to do:
       Dolphin, the video player for the preview), and that a running Finish shows progress.
 - [ ] **Robin's Windows beta (PlateUp! one-shot, Robin, Jesper, Henrik, Kenneth):** install
       as in the README's Windows section, edit the session through the window, report what
-      breaks or confuses. Needs a `plateup/theme.toml` with a [[player]] for Jesper (and his
-      avatar), and the theme's files from `_assets/`.
+      breaks or confuses. `plateup/theme.toml` drafted 2026-11-20 (`show_view = false`;
+      session 02, first episode avsnitt09); still needs `_assets/avatars/jesper.png` and his
+      colour, then the theme's files from `_assets/` go to Robin.
 - [ ] **Windows:** the same, and that `.toml` has a program to open it (none is set by
       default; associate it with Notepad or Kate if the link does nothing).
 - [ ] **Kenneth:** the new layout (2026-11-20, steps on the left, pages on the right): click
