@@ -3,7 +3,26 @@
 What is left after the full code edit of 2026-11-11, the template removal of 2026-11-17 and the audit of 2026-11-18 (API-first module split, notes episode
 rule, detector tuning, overlay polish, lockfile and CI hardening).
 
-## Next up (state at close, 2026-11-18)
+## Next up (state at close, 2026-11-20)
+
+Done on 2026-11-19 and 2026-11-20 (up to `v3.0-beta1`):
+- **Forgiving sync:** a bad recording warns and is left out instead of stopping the run.
+- **Game folders:** `<show>/<game>/session_NN_<date>/`, numbers per game; the crew file's
+  `archive` counts moved sessions; the theme's `assets` key.
+- **Audit fixes 1–6.**
+- **The GUI as a guided workflow:** steps on the left, a page per step on the right, step
+  5 written out as 5a–5d, Kdenlive's own words (marker [G], Monitor → Switch Monitor
+  Fullscreen [F11], Multitrack view [F12]).
+- **README rewritten:** install first, the session as one table, details folded away.
+- **Robin's beta:** the PlateUp! theme, a zip with the show folder, tag `v3.0-beta1`.
+
+Next, in this order:
+1. **Send Robin the zip** and be on chat for his first session (see the GUI section
+   below). The zip was built in the session's scratchpad, which a reboot clears; if it is
+   gone, rebuild it from `_assets/kuliss.toml` (without the `archive` line), the theme's
+   files, `plateup/theme.toml` and the `README.txt` text in the beta item below.
+2. **Collect what broke or confused him**, fix it on main, tag `v3.0-beta2`.
+3. Kenneth's checks below.
 
 Done on 2026-11-18 (`5e80d84`..`04f0392`):
 - **Code audit and fixes.** The audit found the code healthy and secure. Fixes:
@@ -65,6 +84,13 @@ Decided:
 - 2026-11-19:
   - Game software lines live in the crew file's `[software]`; no stream-name aliases in sync.
   - No waveform pre-render in sync (it would copy Kdenlive's undocumented cache format).
+- 2026-11-20:
+  - The GUI is a guided workflow (option B of three, with the episode matrix from C). No
+    page has buttons to other steps; the tree is the navigation.
+  - From now on the crew records with the OBS track names sync expects (`Full mix`, `Game
+    audio`, `Voice audio`, `Comms`). Older recordings are synced by hand.
+  - No stream picker in the GUI for files without those names: too much work for now.
+  - Beta testers install a pinned tag (`v3.0-betaN`), never main.
 
 ## Speed and memory
 
