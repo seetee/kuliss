@@ -22,7 +22,10 @@ Next, in this order:
    gone, rebuild it from `_assets/kuliss.toml` (without the `archive` line), the theme's
    files, `plateup/theme.toml`, and a `README.txt` with the tag's install line, session
    number 2, Game "PlateUp!", first marker avsnitt09, and "sync skipped files by hand".
-2. **Collect what broke or confused him**, fix it on main, tag `v3.0-beta2`.
+   Install line, now `v3.0-beta2` (2026-11-21: names under every avatar, `avatars = false`,
+   a tile for a player without an avatar, `finish --still`):
+   `uv tool install --force "kuliss[gui] @ git+https://github.com/seetee/kuliss.git@v3.0-beta2"`
+2. **Collect what broke or confused him**, fix it on main, tag `v3.0-beta3`.
 3. Kenneth's checks below.
 
 Done on 2026-11-18 (`5e80d84`..`04f0392`):
@@ -115,13 +118,13 @@ Built as proposed (`gui.py`, `steps.py`, `tests/test_gui.py`). Still to do:
       Check that each link opens the right program (Kate for `.toml`/`.md`, Kdenlive,
       Dolphin, the video player for the preview), and that a running Finish shows progress.
 - [ ] **Robin's Windows beta (PlateUp! one-shot, Robin, Jesper, Henrik, Kenneth):** install
-      from the tag `v3.0-beta1` (pinned, so pushes to main don't change his kuliss), edit
+      from the tag `v3.0-beta2` (pinned, so pushes to main don't change his kuliss), edit
       the session through the window, report what breaks or confuses. Kenneth helps over
       chat. His zip (2026-11-20): `_assets/` (crew file without `archive`, with a
       `"PlateUp!"` software entry; avatars incl. Jesper `#fce241`; intro, outro, card),
       `plateup/theme.toml` (`show_view = false`; session 02, first episode avsnitt09) and a
       `README.txt`. The PlateUp! recordings probably lack the OBS stream titles: he syncs
-      those by hand. New fixes for him: tag `v3.0-beta2` and send the install line.
+      those by hand. New fixes for him: tag `v3.0-beta3` and send the install line.
 - [ ] **Windows:** the same, and that `.toml` has a program to open it (none is set by
       default; associate it with Notepad or Kate if the link does nothing).
 - [ ] **Kenneth:** the new layout (2026-11-20, steps on the left, pages on the right): click
