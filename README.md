@@ -178,11 +178,12 @@ The window's *Recordings* step shows all of this before you sync.
 
 Run it on an edited episode. It adds a small overlay that shows:
 
-- **whose view we watch:** that avatar is enlarged, with a name label in the player's colour;
+- **who is who:** every player's name under their avatar, muted, and bright while they talk;
+- **whose view we watch:** that avatar is enlarged, and its name becomes a label in the player's colour;
 - **who talks:** a ring and a sound-bars badge that move with the voice, so the cue never relies on colour alone;
 - **every switch:** the label slides to the new player and a sound plays.
 
-With `show_view = false` in the theme it shows only who talks: same-size avatars, no label, no switch sounds. It also places the show's intro and outro.
+With `show_view = false` in the theme it shows only who talks: same-size avatars, no label, no switch sounds. With `avatars = false` it shows names only: a talking name fills with the player's colour, the viewed one gets an outline and a camera. It also places the show's intro and outro.
 
 | Command | What it does |
 |---|---|
@@ -292,7 +293,7 @@ Each game's look is a `theme.toml` in its folder. Start from [`theme.example.tom
 
 1. Copy `theme.example.toml` into the game's folder as `theme.toml`.
 2. Set `assets = "../_assets"`, so the other paths are relative to the shared folder.
-3. Add a `[[player]]` per player (1–8) with `name`, `colour` (`"#rrggbb"`) and `avatar`.
+3. Add a `[[player]]` per player (1–8) with `name`, `colour` (`"#rrggbb"`) and `avatar` (not needed with `avatars = false`).
 4. Run `kuliss finish P.kdenlive --preview 30` on a copy of an episode, look, adjust, repeat.
 
 The main keys:
@@ -300,6 +301,7 @@ The main keys:
 - `position`: a corner (`top-left`, …) or an edge (`top`, `left`, …). `margin` and `offset = [x, y]` fine-tune it.
 - `orientation`: `"horizontal"` (a row, the default) or `"vertical"` (a column).
 - `show_view = false`: only who talks, for games where everyone shares one view.
+- `avatars = false`: names only, no pictures. Works with either `show_view`.
 - `voice_track` (per player): the audio track with that voice. It defaults to the name; `<name> Voice`, as `kuliss sync` names it, is found too.
 - Unknown keys warn (usually a typo); wrong values stop with a message saying what's expected.
 
@@ -310,7 +312,7 @@ The main keys:
 |---|---|---|---|
 | `avatar` | The player's picture | PNG, JPEG or WebP | Square, at least 128×128 px (pixel art may be tiny). Non-square is cropped to the centre. |
 | `backdrop` | Behind the avatars | PNG, JPEG or WebP | At least twice the panel size (below). Cropped, rounded and darkened 35%; keep it calm. Leave out for a plain dark panel. |
-| `font` | The name label | TTF or OTF | Bold works best. Needs å, ä, ö. Leave out for the system's bold sans-serif. |
+| `font` | The names | TTF or OTF | Bold works best. Needs å, ä, ö. Leave out for the system's bold sans-serif. |
 | `sound` | Each view switch | FLAC, WAV, OGG or MP3 | Under a second. Not needed with `show_view = false`. |
 | `intro_audio` | Intro music | FLAC, WAV, OGG or MP3 | Played from 1.5 s into the file, up to 18 s. |
 | `intro_video` | Intro animation | `.mov` (QuickTime Animation or ProRes 4444) or `.mkv` (FFV1), with transparency | 1920×1080. The first 6 s, from 0.6 s in. WebM transparency doesn't survive in Kdenlive. |
@@ -321,11 +323,13 @@ The intro and outro timings are Samkväm's, copied from its hand-edited episodes
 
 **Panel size** with four players, so you know how big a backdrop to make:
 
-| `avatar_size` | horizontal | horizontal, no view | vertical | vertical, no view |
-|---|---|---|---|---|
-| 48 (default) | 300 × 117 | 252 × 72 | 104 × 432 | 72 × 252 |
-| 64 | 400 × 156 | 336 × 96 | 133 × 576 | 96 × 336 |
-| 96 | 600 × 234 | 504 × 144 | 198 × 864 | 144 × 504 |
+| `avatar_size` | horizontal | horizontal, no view | vertical | vertical, no view | names, horizontal | names, vertical |
+|---|---|---|---|---|---|---|
+| 48 (default) | 444 × 117 | 444 × 105 | 104 × 432 | 104 × 384 | 444 × 51 | 120 × 168 |
+| 64 | 580 × 156 | 580 × 140 | 133 × 576 | 133 × 512 | 580 × 68 | 157 × 224 |
+| 96 | 880 × 234 | 880 × 210 | 198 × 864 | 198 × 768 | 880 × 102 | 238 × 336 |
+
+(Measured with Henrik, Joel, Kenneth and Robin in the system font; a row is as wide as four of its longest name.)
 
 A 900 × 350 px backdrop is plenty for the default look; [`backdrop.example.png`](backdrop.example.png) is one to start from.
 

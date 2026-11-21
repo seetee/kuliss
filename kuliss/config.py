@@ -29,7 +29,7 @@ BOOKENDS = ("intro_audio", "intro_video", "outro_audio", "outro_image")
 class Player:
     name: str
     colour: tuple[int, int, int]
-    avatar: Path
+    avatar: Path | None  # None only when the theme's avatars is off
     source: tuple[str, ...]  # globs matched against clip file names, e.g. "*_h.mkv";
     # empty = the files used on the voice track
     voice_track: str  # Kdenlive audio track holding this player's voice
@@ -50,6 +50,7 @@ class Theme:
     codec: str = "ffv1"  # overlay video codec, see CODECS
     speech_threshold: float = 0.35  # Silero speech probability that counts as talking
     show_view: bool = True  # False: only who talks; no viewed avatar, label or switch sounds
+    avatars: bool = True  # False: names only, no pictures
     intro_audio: Path | None = None  # the four below: placed on the Assets tracks,
     intro_video: Path | None = None  # see timeline.bookends
     outro_audio: Path | None = None
@@ -102,6 +103,7 @@ THEME_KEYS = {
     "codec",
     "speech_threshold",
     "show_view",
+    "avatars",
     "player",
     *BOOKENDS,
 }
@@ -178,10 +180,11 @@ def load_theme(path: Path) -> Theme:
     table = raw.get("player", [])
     if not isinstance(table, list):
         die(f"{path.name}: players are written as [[player]] sections")
+    avatars = _get(raw, "avatars", bool, True, path.name, rule="true or false")
     players = []
     for number, entry in enumerate(table, 1):
         where = f"{path.name}: player #{number}"
-        missing = {"name", "colour", "avatar"} - entry.keys()
+        missing = {"name", "colour", *(["avatar"] if avatars else [])} - entry.keys()
         if missing:
             die(f"{where} is missing {', '.join(sorted(missing))}")
         _warn_unknown(entry, PLAYER_KEYS, where)
@@ -194,7 +197,7 @@ def load_theme(path: Path) -> Theme:
             Player(
                 name=name,
                 colour=parse_colour(entry["colour"], where),
-                avatar=file(entry["avatar"], f"{name}.avatar"),
+                avatar=file(entry["avatar"], f"{name}.avatar") if avatars else None,
                 source=tuple(source),
                 voice_track=_get(entry, "voice_track", str, name, where),
             )
@@ -260,6 +263,7 @@ def load_theme(path: Path) -> Theme:
             "between 0.1 and 0.9",
         ),
         show_view=show_view,
+        avatars=avatars,
         **{k: file(raw[k], k) for k in BOOKENDS if k in raw},
     )
 

@@ -367,12 +367,47 @@ def test_unreadable_assets_are_clear_errors(tmp_path):
         render.Painter(theme, render.layout(theme, 1920, 1080))
 
 
+SECOND = '[[player]]\nname = "Jo"\ncolour = "#3070e0"\navatar = "a.png"\n'
+
+
+@pytest.mark.parametrize("avatars", ["true", "false"])
 @pytest.mark.parametrize("orientation", ["horizontal", "vertical"])
-def test_long_name_fits_inside_the_panel(tmp_path, orientation):
-    theme = load_theme(write_theme(tmp_path, f'orientation = "{orientation}"'))
+def test_long_name_fits_inside_the_panel(tmp_path, orientation, avatars):
+    extra = f'orientation = "{orientation}"\navatars = {avatars}'
+    theme = load_theme(write_theme(tmp_path, extra, SECOND))
     lay = render.layout(theme, 1920, 1080)
     width = render.load_font(theme, lay.font_size).measureText("Kenneth-the-long") + lay.label_h
     assert width + 8 <= lay.panel.width() <= lay.W
+    (ax, ay), (bx, by) = lay.labels
+    if orientation == "horizontal":
+        assert bx - ax >= width  # every name, and the view label, fits its own cell
+    else:
+        assert by - ay >= lay.label_h
+
+
+def test_names_only_needs_no_avatars(tmp_path):
+    path = write_theme(tmp_path, "avatars = false", SECOND)
+    path.write_text(path.read_text().replace('avatar = "a.png"\n', ""))
+    theme = load_theme(path)
+    assert not theme.avatars and theme.players[0].avatar is None
+    painter = render.Painter(theme, render.layout(theme, 1920, 1080))
+    first = painter.draw(1.0, -1, 0, 1.0, (0.0, 0.0))
+    second = painter.draw(1.0, -1, 1, 1.0, (0.0, 0.0))
+    talking = painter.draw(1.0, -1, 0, 1.0, (1.0, 0.0))
+    assert (first != second).any()  # the view marker moves
+    assert (talking != first).any()  # the talking marker shows
+
+
+def test_names_under_avatars_brighten_while_talking(tmp_path):
+    theme = load_theme(write_theme(tmp_path, "show_view = false"))
+    lay = render.layout(theme, 1920, 1080)
+    painter = render.Painter(theme, lay)
+    cx, top = lay.labels[0]
+    rows = slice(round(top), round(top + lay.label_h))
+    quiet = painter.draw(1.0, -1, 0, 1.0, (0.0,))[rows]
+    loud = painter.draw(1.0, -1, 0, 1.0, (1.0,))[rows]
+    assert (quiet[..., :3] > 100).any()  # the muted name is there while silent
+    assert loud[..., :3].max() > quiet[..., :3].max()
 
 
 @pytest.mark.parametrize("codec", ["ffv1", "qtrle"])

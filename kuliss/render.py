@@ -1,12 +1,15 @@
-"""The overlay: a backdrop panel with one avatar per player.
+"""The overlay: a backdrop panel with one avatar per player, each named under it.
 
-- whose view we watch: that avatar is enlarged and gets a name label under it
+- every name is muted (MUTED) and brightens while that player talks;
+- whose view we watch: that avatar is enlarged and its name becomes a label
   in the player's colour; on a cut the label slides over, blending colour, and the
   avatars re-size;
 - who is talking: a ring in the player's colour plus a small badge with sound
   bars (so it never relies on colour alone), faded in and out; the ring's glow
   and the bars move with the voice level;
-- theme `show_view = false` leaves out the first point: same-size avatars, no label;
+- theme `avatars = false`: names only. A talking name fills with the player's colour
+  and gets the badge; the viewed one gets an outline and the camera, crossfading on a cut;
+- theme `show_view = false` leaves out the view: same-size avatars, no label;
 - when no player's view is on screen (intro, outro, full-screen assets) the
   whole overlay fades out.
 
@@ -35,6 +38,7 @@ TALK_FADE = 0.08  # s; talking marker in/out
 LEVEL_FALL = 0.25  # s for the voice level to fall from full to nothing (it rises at once)
 LEVEL_STEPS = 8  # voice levels drawn; few enough that the frame cache keeps hitting
 DIM = 0.6  # opacity of avatars that are neither viewed nor talking
+MUTED = 0.45  # opacity of a name whose player neither talks nor is viewed
 BLACK, WHITE = (0, 0, 0), (255, 255, 255)
 
 # theme `codec` -> (file extension, container, pixel format, encoder options).
@@ -105,29 +109,31 @@ def load_image(path: Path, what: str) -> skia.Image:
 
 
 def layout(theme: Theme, frame_w: int, frame_h: int) -> Layout:
-    """A row of avatars ("horizontal") or a column along the frame edge
-    ("vertical"), with the name label under the viewed avatar either way."""
+    """A row ("horizontal") or a column along the frame edge ("vertical") of
+    avatars with their names under them, or (theme `avatars = false`) of names."""
     n, S = len(theme.players), theme.avatar_size
-    V = round(S * 1.25) if theme.show_view else S
+    V = round(S * 1.25) if theme.show_view and theme.avatars else S
     gap, pad = max(4, S // 4), max(6, S // 4)
     font_size = max(11, round(S / 3))
     label_h = round(font_size * 1.7)
     h, v = anchor(theme.position)
     font = load_font(theme, font_size)
-    label_w = max(font.measureText(p.name) for p in theme.players) + label_h
-    below = gap // 2 + label_h if theme.show_view else 0  # room for the name label
-    if not theme.show_view:
-        label_w = 0
+    label_w = max(font.measureText(p.name) for p in theme.players) + label_h  # widest pill
+    if theme.avatars:
+        item_w, item_h, below = V, V, gap // 2 + label_h  # the name goes under the avatar
+    else:
+        item_w, item_h, below = label_w, label_h, 0
     vertical = theme.orientation == "vertical"
-    cell = V + below if vertical else V  # a column leaves label room per avatar
-    run = [pad + V / 2 + i * (cell + gap) for i in range(n)]  # avatar centres along the bar
+    if vertical:
+        cell, lead = item_h + below, item_h  # a column leaves name room per avatar
+    else:
+        cell = lead = max(item_w, label_w)  # a row: every name fits its own cell
+    run = [pad + lead / 2 + i * (cell + gap) for i in range(n)]  # item centres along the bar
     bar = 2 * pad + n * cell + (n - 1) * gap
     if vertical:
-        pw, ph = max(2 * pad + V, label_w + 8), bar
+        pw, ph = max(2 * pad + item_w, label_w + 8), bar  # the label is kept 4 px inside
     else:
-        pw = max(bar, label_w + 8)  # the label is kept 4 px inside the panel
-        ph = pad + V + below + pad
-        run = [x + (pw - bar) / 2 for x in run]  # centre the avatars in a wider panel
+        pw, ph = bar, pad + item_h + below + pad
     inset = max(4, S // 8)
     g = math.gcd(frame_w, frame_h)
     aw, ah = frame_w // g, frame_h // g
@@ -146,10 +152,12 @@ def layout(theme: Theme, frame_w: int, frame_h: int) -> Layout:
     py = {"top": inset, "middle": (H - ph) / 2, "bottom": H - ph - inset}[v]
     if vertical:
         slots = tuple((px + pw / 2, py + y) for y in run)
+    else:
+        slots = tuple((px + x, py + pad + item_h / 2) for x in run)
+    if theme.avatars:
         labels = tuple((x, y + V / 2 + gap // 2) for x, y in slots)
     else:
-        slots = tuple((px + x, py + pad + V / 2) for x in run)
-        labels = tuple((x, py + pad + V + gap // 2) for x, _ in slots)
+        labels = tuple((x, y - label_h / 2) for x, y in slots)
     return Layout(
         W, H, skia.Rect.MakeXYWH(px, py, pw, ph), S, V, slots, labels, label_h, font_size, inset
     )
@@ -220,7 +228,9 @@ class Painter:
     def __init__(self, theme: Theme, lay: Layout):
         self.theme, self.lay = theme, lay
         self.surface = skia.Surface(lay.W, lay.H)
-        self.avatars = [load_image(p.avatar, f"{p.name}'s avatar") for p in theme.players]
+        self.avatars = [
+            load_image(p.avatar, f"{p.name}'s avatar") for p in theme.players if theme.avatars
+        ]
         self.backdrop = load_image(theme.backdrop, "backdrop") if theme.backdrop else None
         self.font = load_font(theme, lay.font_size)
 
@@ -260,6 +270,9 @@ class Painter:
             for i in range(len(self.theme.players)):
                 w = e if i == b else (1 - e) if i == a else 0.0
                 w = w if self.theme.show_view else 0.0
+                if not self.theme.avatars:
+                    self._tag(c, i, w, talk[i], level[i])
+                    continue
                 self._avatar(
                     c,
                     i,
@@ -268,8 +281,11 @@ class Painter:
                     talk[i],
                     level[i],
                 )
-            if self.theme.show_view:
-                self._label(c, a if a >= 0 else b, b, e)
+                cx, top = lay.labels[i]
+                ink = skia.Paint(Color=sk(WHITE, MUTED + (1 - MUTED) * talk[i]), AntiAlias=True)
+                self._text(c, self.theme.players[i].name, cx, top, ink)
+            if self.theme.show_view and self.theme.avatars:
+                self._label(c, a if a >= 0 else b, b, e)  # covers the viewed player's name
             c.restore()
         return self.surface.makeImageSnapshot().toarray(
             colorType=skia.kBGRA_8888_ColorType, alphaType=skia.kUnpremul_AlphaType
@@ -364,12 +380,49 @@ class Painter:
             skia.RRect.MakeRectXY(box, lay.label_h / 2, lay.label_h / 2),
             skia.Paint(Color=sk(colour), AntiAlias=True),
         )
-        m = self.font.getMetrics()
-        base = top + (lay.label_h - (m.fDescent - m.fAscent)) / 2 - m.fAscent
         ink = skia.Paint(Color=sk(on_colour(colour)), AntiAlias=True)
-        c.drawString(name, x + (w - self.font.measureText(name)) / 2, base, self.font, ink)
-        # a camera on the pill's corner: this is whose view we watch
-        r, bx, by = max(6, lay.S / 6), x + 4, top + 1  # stays inside the panel
+        self._text(c, name, x + w / 2, top, ink)
+        self._camera(c, x + 4, top + 1, colour)
+
+    def _tag(self, c, i, w, talk, level):
+        """A name alone (theme avatars = false): filled in the player's colour while
+        they talk, outlined and with the camera while we watch their view (w: 0..1)."""
+        lay, p = self.lay, self.theme.players[i]
+        cx, top = lay.labels[i]
+        tw = self.font.measureText(p.name) + lay.label_h
+        box = skia.Rect.MakeXYWH(cx - tw / 2, top, tw, lay.label_h)
+        rr = skia.RRect.MakeRectXY(box, lay.label_h / 2, lay.label_h / 2)
+        if talk > 0:
+            soft(
+                c, rr, p.colour, talk * (0.4 + 0.5 * level), lay.S / 24 * (1 + 2 * level), stroke=4
+            )
+            c.drawRRect(rr, skia.Paint(Color=sk(p.colour, talk), AntiAlias=True))
+        if w > 0:
+            c.saveLayerAlpha(None, round(255 * w))
+            outline = skia.Paint(
+                Color=sk(p.colour), AntiAlias=True, Style=skia.Paint.kStroke_Style, StrokeWidth=2
+            )
+            c.drawRRect(rr, outline)
+            self._camera(c, box.left() + 4, top + 1, p.colour)
+            c.restore()
+        rgb = tuple(
+            round(x + (y - x) * talk) for x, y in zip(WHITE, on_colour(p.colour), strict=True)
+        )
+        ink = skia.Paint(Color=sk(rgb, MUTED + (1 - MUTED) * max(w, talk)), AntiAlias=True)
+        self._text(c, p.name, cx, top, ink)
+        if talk > 0:
+            self._badge(c, box.right() - 2, top + 2, p.colour, talk, level)
+
+    def _text(self, c, name, cx, top, ink):
+        """name centred on cx, in a label_h high line starting at top."""
+        m = self.font.getMetrics()
+        base = top + (self.lay.label_h - (m.fDescent - m.fAscent)) / 2 - m.fAscent
+        c.drawString(name, cx - self.font.measureText(name) / 2, base, self.font, ink)
+
+    def _camera(self, c, bx, by, colour):
+        """A camera badge centred on (bx, by): this is whose view we watch."""
+        r = max(6, self.lay.S / 6)
+        ink = skia.Paint(Color=sk(on_colour(colour)), AntiAlias=True)
         fill = skia.Paint(Color=sk(colour), AntiAlias=True)
         c.drawCircle(bx, by, r + 1, fill)
         c.drawCircle(bx, by, r, ink)

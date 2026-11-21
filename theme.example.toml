@@ -13,9 +13,10 @@ sound    = "../_assets/namecard/60003__qubodup__loud-swosh-16.flac"  # plays on 
 #                               # or an edge centre: top | bottom | left | right
 # offset   = [0, 0]             # px nudge from there: [right, down]; negative = left/up
 # orientation = "horizontal"    # horizontal: a row; vertical: a column along the edge;
-#                               # either way the name goes under the viewed avatar
+#                               # either way each name goes under its avatar
 # margin   = 24                 # px from the frame edges
-# avatar_size = 48              # px; the viewed player's avatar is drawn 25% larger
+# avatar_size = 48              # px; the viewed player's avatar is drawn 25% larger;
+#                               # the names are a third of it (also with avatars = false)
 # sound_offset = 0.0            # s; move every transition sound later (+) or earlier (-)
 # codec    = "ffv1"             # ffv1: free and open, lossless (default)
 #                               # qtrle: QuickTime Animation, lossless, about 20% smaller files
@@ -23,6 +24,7 @@ sound    = "../_assets/namecard/60003__qubodup__loud-swosh-16.flac"  # plays on 
 #                               # higher if noise sets it off
 # show_view = true              # false: show only who talks; no enlarged avatar, no name
 #                               # label and no switch sounds (then `sound` may be left out)
+# avatars  = true               # false: names only, no pictures (then `avatar` may be left out)
 
 # The show's intro and outro (each optional). They go on the project's "Assets" audio and
 # video tracks, beside your own clips there (one of ours that would overlap yours is left out):
