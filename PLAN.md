@@ -3,7 +3,20 @@
 What is left after the full code edit of 2026-11-11, the template removal of 2026-11-17 and the audit of 2026-11-18 (API-first module split, notes episode
 rule, detector tuning, overlay polish, lockfile and CI hardening).
 
-## Next up (state at close, 2026-11-20)
+## Next up (state at close, 2026-11-21)
+
+Done on 2026-11-21 (`v3.0-beta2`, `v3.0-beta3`, then on main):
+- **Names in the overlay:** every player's name under their avatar, muted, bright while
+  talking; `avatars = false` for names only, with or without `show_view`.
+- **From the Overlayed review:** a tile with the initial for a player without an avatar;
+  `finish --still` (the overlay over one frame, three states, in a second).
+- **GUI Settings pages** for the theme and crew file: what they hold in order of use, their
+  problems, a preview, Create from the examples (now in `kuliss/`, so they ship). Editing
+  stays in the text editor (full editors judged too big). A Still button per episode.
+- **Robin's zip rebuilt** for beta3 (in the session's scratchpad; rebuild as below).
+- **Privacy:** generic names and paths in the docs, example theme and tests.
+- **Klatch:** the reuse promise dropped; Klatch borrows kuliss's methods, not its code.
+- **Moved show folder:** `finish` stops with how to relink instead of a decode error.
 
 Done on 2026-11-19 and 2026-11-20 (up to `v3.0-beta1`):
 - **Forgiving sync:** a bad recording warns and is left out instead of stopping the run.
@@ -96,6 +109,16 @@ Decided:
     audio`, `Voice audio`, `Comms`). Older recordings are synced by hand.
   - No stream picker in the GUI for files without those names: too much work for now.
   - Beta testers install a pinned tag (`v3.0-betaN`), never main.
+- 2026-11-21:
+  - Settings in the GUI show, check, preview and create; no form editors, no `tomlkit`.
+  - Absolute paths stay: Kdenlive writes every file outside the project's folder as an
+    absolute path when it saves, so kuliss can't keep them relative. After a move, relink
+    with Kdenlive's missing-clips dialog pointed at the show folder. Kdenlive has no
+    released option for this (checked 2026-11-21: bug 343386, bug 510305 open for
+    cross-platform editing, and a `work/relative-paths` branch in testing in October 2026,
+    per bug 476104). When a Kdenlive release ships relative paths, check that kuliss's
+    `timeline.load` reads them (it already resolves relative resources against `root` and
+    the project's folder) and drop the `finish.MOVED` hint if it no longer applies.
 
 ## Speed and memory
 
@@ -104,8 +127,15 @@ Decided:
       no way out: measured 2026-11-11 it is no faster and only 20% smaller, now that the
       overlay has soft shadows and glow. A cache for the speech analysis was measured and
       dropped: analysis is 14 s of a 2-minute run.
-- [ ] Stream decoded audio into Silero window by window instead of buffering the whole voice
-      track (about 77 MB per player). `window_levels` and the warm-up would need to stream too.
+- [ ] **Memory in `finish` (only if it bites: an 8 GB machine, or hour-long episodes).**
+      `vad.decode` returns each voice clip whole, as 16 kHz float32 (3.8 MB per minute), and
+      the players run in parallel: about 300 MB for a 20-minute episode with four players,
+      900 MB for an hour. Silero only reads 512-sample windows, and the voice level needs one
+      loudness value per window plus their 95th percentile, so both can be computed while
+      decoding: `decode` yields chunks, `talking` scores each full window as it arrives and
+      keeps its probability and dB, `window_levels` works from the dB array. About 1 MB
+      instead of 300, same speed. Estimated 30–40 lines in `vad.py`, no new dependency; add
+      a test that old and new give identical output on a synthetic clip.
 
 ## Before publishing
 
