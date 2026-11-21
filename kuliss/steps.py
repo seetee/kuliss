@@ -6,12 +6,13 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .config import crew_file, nearest_theme
-from .errors import VoiceError
+from . import config
+from .config import BOOKENDS, CREW_FILE, Crew, Theme, crew_file, nearest_theme
+from .errors import VoiceError, die
 from .notes import EPISODE_PREFIX, _locate_session_file, discover, episodes
 
 if TYPE_CHECKING:  # heavy modules; only their results are formatted here
@@ -217,3 +218,104 @@ def analysis_report(analysis: Analysis) -> list[str]:
         for name, on_screen, talking in analysis.stats()
     ]
     return lines
+
+
+# ── the Settings pages: what the theme and the crew file hold, in order of use ──
+
+# every theme key but the players (their own table) and `assets` (already applied to the paths)
+THEME_ORDER = (
+    "avatars",
+    "show_view",
+    "position",
+    "orientation",
+    "avatar_size",
+    "margin",
+    "offset",
+    "backdrop",
+    "font",
+    "sound",
+    "sound_offset",
+    *BOOKENDS,
+    "speech_threshold",
+    "codec",
+)
+CREW_ORDER = ("archive", "master_gain", "assets_gain", "game_gain")  # + software, voice tables
+EXAMPLES = {"theme": "theme.example.toml", "crew": "crew.example.toml"}
+
+
+def _shown(value) -> str:
+    if value is None:
+        return "–"
+    if isinstance(value, bool):
+        return "yes" if value else "no"
+    if isinstance(value, Path):
+        return value.name
+    if isinstance(value, tuple):
+        return ", ".join(map(str, value))
+    return str(value)
+
+
+def _quietly(read, path: Path):
+    """read(path), with the config warnings (unknown keys and the like) returned as
+    problems for the page instead of going to the log: the page is re-read on every focus."""
+    problems: list[str] = []
+
+    class Catch(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            problems.append(record.getMessage())
+
+    logger, catch = logging.getLogger(config.__name__), Catch()
+    logger.addHandler(catch)
+    logger.propagate = False
+    try:
+        return read(path), problems
+    except VoiceError as e:
+        return None, [*problems, str(e)]
+    finally:
+        logger.removeHandler(catch)
+        logger.propagate = True
+
+
+def read_theme(path: Path) -> tuple[Theme | None, list[str]]:
+    """The theme, or None if it doesn't load; and what is wrong with it."""
+    return _quietly(config.load_theme, path)
+
+
+def read_crew(path: Path) -> tuple[Crew | None, list[str]]:
+    return _quietly(config.load_crew, path)
+
+
+def theme_rows(theme: Theme) -> list[tuple[str, str, str]]:
+    """(key, value, default) for every theme key but the players, in order of use."""
+    defaults = {f.name: f.default for f in fields(Theme)}
+    return [(k, _shown(getattr(theme, k)), _shown(defaults.get(k))) for k in THEME_ORDER]
+
+
+def crew_rows(crew: Crew) -> list[tuple[str, str, str]]:
+    defaults = {f.name: f.default for f in fields(Crew)}
+    return [(k, _shown(getattr(crew, k)), _shown(defaults.get(k))) for k in CREW_ORDER]
+
+
+def theme_target(session: Path | None, root: Path) -> Path:
+    """Where a new theme goes: the game folder (a session's parent, else the folder opened)."""
+    return (session.parent if session else root) / "theme.toml"
+
+
+def crew_target(session: Path | None, root: Path) -> Path:
+    """The crew file in use, or where a new one goes: _assets/ in the show folder, the one
+    above the game folder."""
+    game = theme_target(session, root).parent
+    found = crew_file(game)
+    return found if found.is_file() else game.parent / CREW_FILE
+
+
+def create_from_example(kind: str, target: Path) -> Path:
+    """Copy the commented example (kind "theme" or "crew") to target; never overwrites."""
+    text = (Path(__file__).parent / EXAMPLES[kind]).read_text(encoding="utf-8")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with open(target, "x", encoding="utf-8") as f:
+            f.write(text)
+    except FileExistsError:
+        die(f"{target} already exists")
+    return target

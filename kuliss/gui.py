@@ -784,7 +784,7 @@ class Window(QMainWindow):
             show = [
                 link(theme, "Theme")
                 if theme
-                else f'Theme: none (see <a href="{REPO}/blob/main/theme.example.toml">'
+                else f'Theme: none (see <a href="{REPO}/blob/main/kuliss/theme.example.toml">'
                 "theme.example.toml</a>)",
                 link(s.crew_file, "Crew file"),
                 link(s.crew_file.parent, "_assets/ folder"),

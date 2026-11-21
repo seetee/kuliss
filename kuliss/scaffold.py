@@ -97,7 +97,7 @@ def scaffold_session(
     if nearest_theme(session_dir) is None:
         log.warning(
             "no theme.toml in %s or above, so kuliss finish will not run; put the "
-            "game's theme in %s (see theme.example.toml)",
+            "game's theme in %s (see kuliss/theme.example.toml, or Settings → Theme in the window)",
             session_dir,
             root,
         )

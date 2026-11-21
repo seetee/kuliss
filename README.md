@@ -132,7 +132,7 @@ Run it in the game's folder before recording. It asks for the recording date (En
 <details>
 <summary>The crew file</summary>
 
-`_assets/kuliss.toml` in the show folder (see [`crew.example.toml`](crew.example.toml)) holds:
+`_assets/kuliss.toml` in the show folder (see [`crew.example.toml`](kuliss/crew.example.toml)) holds:
 
 - the mixer settings of new tracks: each player's voice volume, pan and contrast, the game audio, `Assets` and master volume. They are set once, when a track is created. Without a crew file every track starts at 0 dB, centred;
 - each game's software versions under `[software]`, for `kuliss new`;
@@ -290,7 +290,7 @@ Kenneth: 0
 
 ## Themes
 
-Each game's look is a `theme.toml` in its folder. Start from [`theme.example.toml`](theme.example.toml): every key is explained there.
+Each game's look is a `theme.toml` in its folder. Start from [`theme.example.toml`](kuliss/theme.example.toml): every key is explained there.
 
 1. Copy `theme.example.toml` into the game's folder as `theme.toml`.
 2. Set `assets = "../_assets"`, so the other paths are relative to the shared folder.

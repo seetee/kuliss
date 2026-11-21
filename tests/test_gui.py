@@ -202,3 +202,29 @@ def test_theme_assets_folder_is_set_once(tmp_path, monkeypatch):
     theme.write_text('assets = "../nowhere"\n', encoding="utf-8")
     with pytest.raises(VoiceError, match="no such folder"):
         load_theme(theme)
+
+
+def test_settings_pages_show_every_key(tmp_path):
+    from kuliss.config import CREW_KEYS, THEME_KEYS
+
+    assert set(steps.THEME_ORDER) == THEME_KEYS - {"player", "assets"}  # those have their own
+    assert set(steps.CREW_ORDER) == CREW_KEYS - {"software", "voice"}  # tables on the page
+
+    crew_path = steps.create_from_example("crew", tmp_path / "show" / "_assets" / "kuliss.toml")
+    crew, problems = steps.read_crew(crew_path)
+    assert crew and not problems  # the example loads as it is
+    assert ("master_gain", "10.0", "0.0") in steps.crew_rows(crew)
+    with pytest.raises(VoiceError, match="already exists"):
+        steps.create_from_example("crew", crew_path)  # never overwrites
+
+    theme_path = steps.create_from_example("theme", tmp_path / "show" / "game" / "theme.toml")
+    theme, problems = steps.read_theme(theme_path)
+    assert theme is None and "no such file" in problems[-1]  # the page says what to fill in
+    theme_path.write_text("typo = 1\n" + theme_path.read_text())
+    _, problems = steps.read_theme(theme_path)
+    assert any("unknown key 'typo'" in p for p in problems)  # warnings land on the page
+
+    session = tmp_path / "show" / "game" / "session_01_2025-01-01"
+    assert steps.theme_target(session, tmp_path) == theme_path
+    assert steps.crew_target(session, tmp_path) == crew_path
+    assert steps.crew_target(None, tmp_path / "elsewhere") == tmp_path / "_assets" / "kuliss.toml"
