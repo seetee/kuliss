@@ -398,6 +398,18 @@ def test_names_only_needs_no_avatars(tmp_path):
     assert (talking != first).any()  # the talking marker shows
 
 
+def test_player_without_avatar_gets_a_tile_in_their_colour(tmp_path):
+    path = write_theme(tmp_path)
+    path.write_text(path.read_text().replace('avatar = "a.png"\n', ""))
+    theme = load_theme(path)
+    assert theme.avatars and theme.players[0].avatar is None
+    lay = render.layout(theme, 1920, 1080)
+    frame = render.Painter(theme, lay).draw(1.0, -1, 0, 1.0, (0.0,))
+    x, y = (round(v) for v in lay.slots[0])
+    b, g, r, _ = frame[y - lay.V // 3, x - lay.V // 3]  # a corner of the tile, off the initial
+    assert (r, g, b) == (0xC8, 0x3C, 0x5A)
+
+
 def test_names_under_avatars_brighten_while_talking(tmp_path):
     theme = load_theme(write_theme(tmp_path, "show_view = false"))
     lay = render.layout(theme, 1920, 1080)

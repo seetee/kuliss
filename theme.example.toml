@@ -42,7 +42,8 @@ sound    = "../_assets/namecard/60003__qubodup__loud-swosh-16.flac"  # plays on 
 [[player]]
 name   = "Henrik"
 colour = "#e0a030"
-avatar = "avatars/henrik.png"   # a Minecraft head, an icon, anything square
+avatar = "avatars/henrik.png"   # a Minecraft head, an icon, anything square;
+                                # left out: a tile in the player's colour with their initial
 
 [[player]]
 name   = "Joel"

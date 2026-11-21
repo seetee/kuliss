@@ -29,7 +29,7 @@ BOOKENDS = ("intro_audio", "intro_video", "outro_audio", "outro_image")
 class Player:
     name: str
     colour: tuple[int, int, int]
-    avatar: Path | None  # None only when the theme's avatars is off
+    avatar: Path | None  # None: a tile with the initial (or names only, theme avatars off)
     source: tuple[str, ...]  # globs matched against clip file names, e.g. "*_h.mkv";
     # empty = the files used on the voice track
     voice_track: str  # Kdenlive audio track holding this player's voice
@@ -184,7 +184,7 @@ def load_theme(path: Path) -> Theme:
     players = []
     for number, entry in enumerate(table, 1):
         where = f"{path.name}: player #{number}"
-        missing = {"name", "colour", *(["avatar"] if avatars else [])} - entry.keys()
+        missing = {"name", "colour"} - entry.keys()
         if missing:
             die(f"{where} is missing {', '.join(sorted(missing))}")
         _warn_unknown(entry, PLAYER_KEYS, where)
@@ -197,7 +197,9 @@ def load_theme(path: Path) -> Theme:
             Player(
                 name=name,
                 colour=parse_colour(entry["colour"], where),
-                avatar=file(entry["avatar"], f"{name}.avatar") if avatars else None,
+                avatar=file(entry["avatar"], f"{name}.avatar")
+                if avatars and "avatar" in entry
+                else None,
                 source=tuple(source),
                 voice_track=_get(entry, "voice_track", str, name, where),
             )

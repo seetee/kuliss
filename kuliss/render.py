@@ -229,7 +229,7 @@ class Painter:
         self.theme, self.lay = theme, lay
         self.surface = skia.Surface(lay.W, lay.H)
         self.avatars = [
-            load_image(p.avatar, f"{p.name}'s avatar") for p in theme.players if theme.avatars
+            load_image(p.avatar, f"{p.name}'s avatar") if p.avatar else None for p in theme.players
         ]
         self.backdrop = load_image(theme.backdrop, "backdrop") if theme.backdrop else None
         self.font = load_font(theme, lay.font_size)
@@ -308,23 +308,10 @@ class Painter:
         r = size * 0.18
         rr = skia.RRect.MakeRectXY(box, r, r)
         c.saveLayerAlpha(None, round(255 * alpha))
-        # the shadow follows the picture's own shape (avatars often have a clear border);
-        # drawn first and unclipped, then covered by the picture itself
-        self._image(
-            c,
-            self.avatars[i],
-            box,
-            cover=True,
-            paint=skia.Paint(
-                ImageFilter=skia.ImageFilters.DropShadowOnly(
-                    0, lay.S / 24, lay.S / 16, lay.S / 16, sk(BLACK, 0.6)
-                )
-            ),
-        )
-        c.save()
-        c.clipRRect(rr, doAntiAlias=True)
-        self._image(c, self.avatars[i], box, cover=True)  # non-square avatars are cropped
-        c.restore()
+        if self.avatars[i] is None:
+            self._tile(c, i, rr)
+        else:
+            self._picture(c, i, box, rr)
         if talk > 0:
             ring = skia.RRect.MakeRectXY(box.makeOutset(4, 4), r + 4, r + 4)
             # the glow breathes with the voice; the crisp ring below is the steady cue
@@ -351,6 +338,34 @@ class Painter:
                 )
             self._badge(c, box.right() - 2, box.top() + 2, colour, talk, level)
         c.restore()
+
+    def _picture(self, c, i, box, rr):
+        # the shadow follows the picture's own shape (avatars often have a clear border);
+        # drawn first and unclipped, then covered by the picture itself
+        S = self.lay.S
+        shadow = skia.ImageFilters.DropShadowOnly(0, S / 24, S / 16, S / 16, sk(BLACK, 0.6))
+        self._image(c, self.avatars[i], box, cover=True, paint=skia.Paint(ImageFilter=shadow))
+        c.save()
+        c.clipRRect(rr, doAntiAlias=True)
+        self._image(c, self.avatars[i], box, cover=True)  # non-square avatars are cropped
+        c.restore()
+
+    def _tile(self, c, i, rr):
+        """No avatar: a tile in the player's colour with their initial."""
+        p, box = self.theme.players[i], rr.rect()
+        soft(c, rr, BLACK, 0.6, self.lay.S / 16, dy=self.lay.S / 24)
+        c.drawRRect(rr, skia.Paint(Color=sk(p.colour), AntiAlias=True))
+        font = self.font.makeWithSize(box.height() * 0.55)
+        initial = p.name[0].upper()
+        bounds = skia.Rect()
+        font.measureText(initial, bounds=bounds)
+        c.drawString(
+            initial,
+            box.centerX() - bounds.centerX(),
+            box.centerY() - bounds.centerY(),
+            font,
+            skia.Paint(Color=sk(on_colour(p.colour)), AntiAlias=True),
+        )
 
     def _badge(self, c, x, y, colour, alpha, level):
         rad = max(6, self.lay.S / 6)

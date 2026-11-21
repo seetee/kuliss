@@ -293,7 +293,7 @@ Each game's look is a `theme.toml` in its folder. Start from [`theme.example.tom
 
 1. Copy `theme.example.toml` into the game's folder as `theme.toml`.
 2. Set `assets = "../_assets"`, so the other paths are relative to the shared folder.
-3. Add a `[[player]]` per player (1–8) with `name`, `colour` (`"#rrggbb"`) and `avatar` (not needed with `avatars = false`).
+3. Add a `[[player]]` per player (1–8) with `name`, `colour` (`"#rrggbb"`) and `avatar` (left out: a tile in the player's colour with their initial, handy for a guest).
 4. Run `kuliss finish P.kdenlive --preview 30` on a copy of an episode, look, adjust, repeat.
 
 The main keys:
