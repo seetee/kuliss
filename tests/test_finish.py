@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 import skia
 
-from kuliss import cli, render, vad
+from kuliss import cli, finish, render, vad
 from kuliss import timeline as T
 from kuliss.config import Player, load_theme
 from kuliss.errors import VoiceError
@@ -534,6 +534,15 @@ def test_still_draws_the_overlay_over_a_frame_of_the_first_view(tmp_path, capsys
     assert tuple(sheet[1000, 1800, :3]) == (0, 200, 0)  # the frame, away from the overlay
     assert tuple(sheet[60, 60, :3]) != (0, 200, 0)  # the panel, top-left by default
     assert (sheet[:1080] != sheet[1080:2160]).any()  # nobody talks / someone talks
+
+
+def test_moved_voice_file_says_how_to_relink(tmp_path):
+    project = tmp_path / "ep.kdenlive"
+    project.write_text(PROJECT)  # its files, /src/…, don't exist: as after a folder move
+    theme = write_theme(tmp_path)
+    theme.write_text(theme.read_text().replace("Alexandra-the-long", "Carol"))
+    with pytest.raises(VoiceError, match=r"cannot find \S*2025-08-23_c\.mkv; moved\?"):
+        finish.analyse(project)
 
 
 def test_preview_must_be_positive():

@@ -29,6 +29,12 @@ from .files import write_atomic
 log = logging.getLogger(__name__)
 
 MIN_SPAN = 1.0  # s; views shorter than this (flash cuts) don't count as a switch
+# Kdenlive saves files outside the project's folder as absolute paths, so a moved show folder
+# breaks them until Kdenlive relinks them
+MOVED = (
+    "moved? open the project in Kdenlive, point its missing-clips dialog at the show folder, "
+    "save, and run again"
+)
 
 
 @dataclass
@@ -117,6 +123,9 @@ def analyse(project: str | Path, theme_file: str | Path | None = None) -> Analys
             view[max(start, 0) : max(start + n, 0)] = -1
     spans = timeline.view_spans(view, round(MIN_SPAN * fps))
     entries = [timeline.voice_entries(proj, p) for p in players]
+    missing = sorted({e.resource for es in entries for e in es if not Path(e.resource).exists()})
+    if missing:
+        die(f"cannot find {', '.join(missing)}; {MOVED}")
     t0 = time.monotonic()
     with ThreadPoolExecutor(len(players)) as pool:
         talking = list(
@@ -163,7 +172,11 @@ def still(project: str | Path, theme_file: str | Path | None = None) -> Path:
         )
         grabbed = _grab(e.resource, (e.src_in + f - e.start) / proj.fps, w, h)
         if grabbed is None:
-            log.warning("could not read a frame of %s; the still has a grey background", e.resource)
+            log.warning(
+                "could not read a frame of %s; the still has a grey background (%s)",
+                e.resource,
+                MOVED,
+            )
         else:
             background = grabbed
     other = (who + 1) % len(players)  # who itself when alone
