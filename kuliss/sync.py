@@ -1,4 +1,4 @@
-"""Line up recordings of one session by their audio. Kdenlive-free, so Klatch can use it."""
+"""Line up recordings of one session by their audio. Kdenlive-free."""
 
 import logging
 

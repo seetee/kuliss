@@ -8,7 +8,7 @@ from silero_vad_lite import SileroVAD
 
 from .errors import die
 
-if TYPE_CHECKING:  # decode/speech_windows stay Kdenlive-free for Klatch
+if TYPE_CHECKING:  # decode/speech_windows stay Kdenlive-free
     from .timeline import Entry
 
 RATE = 16000

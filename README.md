@@ -371,7 +371,7 @@ finish.apply(a, finish.render_overlay(a))
 | `notes.py`, `kdnotes.py`, `mdoc.py` | `kuliss notes`, Document Notes, the Markdown tree |
 | `files.py`, `errors.py` | Backups and atomic writes, `VoiceError` |
 
-`vad.py`, `sync.py` and `render.py` don't depend on Kdenlive, so [Klatch](https://github.com/seetee/klatch) can reuse them.
+`vad.py`, `sync.py` and `render.py` don't depend on Kdenlive.
 
 </details>
 
