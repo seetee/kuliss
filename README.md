@@ -75,7 +75,7 @@ The tests run on Windows on every change, but no session has been edited there y
 
 ## A session, step by step
 
-`kuliss gui` shows these steps as a list, with ✓ on what is done and ▶ on the next step. It works that out from the files every time the window gets focus. Each step's page says what to do, shows what is there, and has the step's buttons. Every command is also on the command line:
+`kuliss gui` shows these steps as a list, with ✓ on what is done and ▶ on the next step. It works that out from the files every time the window gets focus. Each step's page says what to do, shows what is there, and has the step's buttons. Below the steps, *Settings* shows the theme and the crew file: what they hold, any problems, and for the theme a preview of the overlay. Edit them in your text editor; the page follows when you come back to the window. Every command is also on the command line:
 
 | | Step | What you do | Command |
 |---|---|---|---|
@@ -292,10 +292,10 @@ Kenneth: 0
 
 Each game's look is a `theme.toml` in its folder. Start from [`theme.example.toml`](kuliss/theme.example.toml): every key is explained there.
 
-1. Copy `theme.example.toml` into the game's folder as `theme.toml`.
+1. Copy `theme.example.toml` into the game's folder as `theme.toml` (or in the window: *Settings → Theme → Create theme.toml*).
 2. Set `assets = "../_assets"`, so the other paths are relative to the shared folder.
 3. Add a `[[player]]` per player (1–8) with `name`, `colour` (`"#rrggbb"`) and `avatar` (left out: a tile in the player's colour with their initial, handy for a guest).
-4. Run `kuliss finish P.kdenlive --still` on an episode, look at the picture, adjust, repeat. Check the motion once with `--preview 30` on a copy.
+4. Keep *Settings → Theme* open in the window: it redraws the overlay each time you save in the editor and come back. Then run `kuliss finish P.kdenlive --still` (the *Still* button on an episode's page) to see it on a real frame, and check the motion once with `--preview 30` on a copy.
 
 The main keys:
 

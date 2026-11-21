@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass, field, fields
+from dataclasses import MISSING, dataclass, field, fields
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -244,6 +244,8 @@ EXAMPLES = {"theme": "theme.example.toml", "crew": "crew.example.toml"}
 
 
 def _shown(value) -> str:
+    if value is MISSING:
+        return "(required)"
     if value is None:
         return "–"
     if isinstance(value, bool):
@@ -293,7 +295,9 @@ def theme_rows(theme: Theme) -> list[tuple[str, str, str]]:
 
 def crew_rows(crew: Crew) -> list[tuple[str, str, str]]:
     defaults = {f.name: f.default for f in fields(Crew)}
-    return [(k, _shown(getattr(crew, k)), _shown(defaults.get(k))) for k in CREW_ORDER]
+    shown = {k: _shown(getattr(crew, k)) for k in CREW_ORDER}
+    shown["archive"] = str(crew.archive) if crew.archive else "–"  # the whole path matters here
+    return [(k, shown[k], _shown(defaults.get(k))) for k in CREW_ORDER]
 
 
 def theme_target(session: Path | None, root: Path) -> Path:

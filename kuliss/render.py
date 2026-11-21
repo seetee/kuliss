@@ -451,6 +451,20 @@ class Painter:
         c.drawPath(lens, fill)
 
 
+def over(background: np.ndarray, overlay: np.ndarray, x: int, y: int) -> np.ndarray:
+    """overlay (unpremultiplied BGRA) blended onto background with its corner at (x, y)."""
+    h, w = background.shape[:2]
+    oh, ow = overlay.shape[:2]
+    x0, y0, x1, y1 = max(x, 0), max(y, 0), min(x + ow, w), min(y + oh, h)
+    if x0 >= x1 or y0 >= y1:
+        return background
+    part = overlay[y0 - y : y1 - y, x0 - x : x1 - x].astype(np.float32)
+    a = part[..., 3:4] / 255
+    under = background[y0:y1, x0:x1, :3].astype(np.float32)
+    background[y0:y1, x0:x1, :3] = (part[..., :3] * a + under * (1 - a)).round().astype(np.uint8)
+    return background
+
+
 def frame_states(spans, talking: list[np.ndarray], fps: float, n: int):
     """Per frame: (visibility, previous viewer, viewer, transition 0..1, talking marker
     opacity per player, voice level per player)."""

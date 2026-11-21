@@ -125,6 +125,30 @@ def test_window_opens_and_closes(tmp_path, monkeypatch):
     assert window.selected == "notes"  # kept across the refresh after the command
     assert "no episode subdirectories found" in page_text(window)  # on the step's page
     assert window.split.sizes()[1] == 0  # so the log stays out of the way
+    window.go("set:theme")  # Settings: no theme yet, so the page offers to make one
+    assert "No theme.toml for this game yet" in page_text(window)
+    (session.parent / "theme.toml").write_text(
+        'show_view = false\navatars = false\n[[player]]\nname = "Kim"\ncolour = "#3070e0"\n'
+    )
+    window.refresh()  # as when the window gets focus back from the editor
+    assert window.selected == "set:theme"
+    preview = [
+        w
+        for w in window.page.widget().findChildren(gui.QLabel)
+        if w.pixmap() and not w.pixmap().isNull()
+    ]
+    assert preview and preview[0].pixmap().width() == 640
+    tables = window.page.widget().findChildren(gui.QTableWidget)
+    assert tables[0].item(0, 0).text() == "Kim" and tables[1].rowCount() == len(steps.THEME_ORDER)
+    window.go("set:crew")
+    assert "No crew file yet" in page_text(window)
+    steps.create_from_example("crew", tmp_path / "_assets" / "kuliss.toml")  # inside tmp_path
+    window.refresh()
+    assert "Alice" in [
+        t.item(r, 0).text()
+        for t in window.page.widget().findChildren(gui.QTableWidget)
+        for r in range(t.rowCount())
+    ]
     dialog = gui.NewSessionDialog(window, 3, {"Ozone": ["* Minecraft 1.12.2"]})
     assert dialog.answers()[1] == 3
     assert dialog.answers()[2][0] == "* Minecraft 1.12.2"  # the first game by default

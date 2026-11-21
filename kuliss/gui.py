@@ -13,8 +13,9 @@ from collections.abc import Callable
 from html import escape
 from pathlib import Path
 
-from PySide6.QtCore import QDate, QObject, QSettings, Qt, QThread, QUrl, Signal
-from PySide6.QtGui import QDesktopServices, QFont
+import numpy as np
+from PySide6.QtCore import QDate, QObject, QSettings, QSize, Qt, QThread, QUrl, Signal
+from PySide6.QtGui import QColor, QDesktopServices, QFont, QIcon, QImage, QPixmap
 from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -45,6 +46,7 @@ from PySide6.QtWidgets import (
 )
 
 from . import steps
+from .config import Theme, nearest_theme
 from .errors import VoiceError
 from .notes import EPISODE_PREFIX, SOFTWARE_DEFAULTS
 
@@ -249,7 +251,7 @@ class Window(QMainWindow):
         self.tree.setIndentation(18)
         roomy(self.tree)
         self.tree.currentItemChanged.connect(
-            lambda item, _: item and self.show_page(item.data(0, KEY))
+            lambda item, _: item and item.data(0, KEY) and self.show_page(item.data(0, KEY))
         )
         self.links = rich("")
         self.links.setAlignment(Qt.AlignmentFlag.AlignTop)
@@ -351,12 +353,11 @@ class Window(QMainWindow):
             self.setWindowTitle(f"kuliss – {s.session.name}")
             self.title.setText(f"<big><b>{escape(s.session.name)}</b></big>")
             current = self._fill_tree(s)
+        self._settings_tree()
         self.tree.expandAll()
         self.tree.blockSignals(False)
-        keys = {
-            self.tree.topLevelItem(i).data(0, KEY) for i in range(self.tree.topLevelItemCount())
-        }
-        keys |= {key for key, _ in self._children()}
+        everything = Qt.MatchFlag.MatchWildcard | Qt.MatchFlag.MatchRecursive
+        keys = {i.data(0, KEY) for i in self.tree.findItems("*", everything)} - {None}
         if self.selected not in keys:
             self.selected = current
         self._select(self.selected)
@@ -398,6 +399,24 @@ class Window(QMainWindow):
         count = sum(done for _, done, _ in order)
         self.done.setText(f"{count} of {len(order)} steps done")
         return current
+
+    def theme_path(self) -> Path | None:
+        return nearest_theme(self.session or self.root)
+
+    def crew_path(self) -> Path:
+        return steps.crew_target(self.session, self.root)
+
+    def _settings_tree(self) -> None:
+        """Settings under the steps: ✓ loads cleanly, ⚠ has problems, ○ not there yet."""
+        head = QTreeWidgetItem(self.tree, ["Settings"])
+        head.setFlags(Qt.ItemFlag.ItemIsEnabled)  # a header, not a page
+        for key, text, path, read in (
+            ("set:theme", "Theme", self.theme_path(), steps.read_theme),
+            ("set:crew", "Crew file", self.crew_path(), steps.read_crew),
+        ):
+            there = path is not None and path.is_file()
+            sign = ("⚠" if read(path)[1] else "✓") if there else mark(False)
+            QTreeWidgetItem(head, [f"{sign}  {text}"]).setData(0, KEY, key)
 
     def _children(self):
         if not self.s:
@@ -442,7 +461,9 @@ class Window(QMainWindow):
         box = QVBoxLayout(widget)
         box.setSpacing(10)
         s = self.s
-        if s is None:
+        if key.startswith("set:"):
+            getattr(self, f"_{key[4:]}_settings")(box)
+        elif s is None:
             self._no_session(box)
         elif key.startswith("ep:"):
             self._episode_page(box, s, next(e for e in s.episodes if f"ep:{e.name}" == key))
@@ -737,7 +758,8 @@ class Window(QMainWindow):
             "What used to be done by hand: the intro and outro, picture and sound, ducked "
             "under the first and last voice; a swoosh at every switch of view; and the name "
             "tag showing whose view it is, for as long as it is shown. <i>Analyse</i> only "
-            f"counts the switches; <i>Preview {PREVIEW} s</i> renders the start to look at. "
+            f"counts the switches; <i>Still</i> shows the overlay on one frame in a second; "
+            f"<i>Preview {PREVIEW} s</i> renders the start to look at. "
             "Run Finish again after any change to the edit, then reopen the project in "
             "Kdenlive without saving it first.",
             bool(e and e.finished),
@@ -746,6 +768,7 @@ class Window(QMainWindow):
             self._buttons(
                 box,
                 ("Analyse", lambda: self.finish(e.project, "analyse"), has),
+                ("Still", lambda: self.finish(e.project, "still"), has),
                 (f"Preview {PREVIEW} s", lambda: self.finish(e.project, "preview"), has),
                 ("Finish", lambda: self.finish(e.project, "finish"), has),
             )
@@ -776,6 +799,196 @@ class Window(QMainWindow):
             ("Update notes", lambda: self.notes(s.session, False), bool(made)),
             ("Dry run", lambda: self.notes(s.session, True), bool(made)),
         )
+
+    def _theme_settings(self, box: QVBoxLayout) -> None:
+        self._heading(
+            box,
+            "Theme",
+            "The game's look: the players, where the overlay sits, its sound, the intro and "
+            "outro. Edit it in your text editor, where every key is explained; this page "
+            "reads it again whenever you come back to the window.",
+        )
+        path = self.theme_path()
+        if path is None:
+            target = steps.theme_target(self.session, self.root)
+            box.addWidget(
+                message(
+                    f"No theme.toml for this game yet. <b>Create theme.toml</b> puts a copy of "
+                    f"the commented example in {escape(str(target.parent))} and opens it.",
+                    "info",
+                )
+            )
+            self._buttons(box, ("Create theme.toml", lambda: self.create("theme", target), True))
+            return
+        box.addWidget(rich(f"{escape(str(path))}<br>{link(path, 'Open it in the editor')}"))
+        theme, problems = steps.read_theme(path)
+        for problem in problems:
+            box.addWidget(message(escape(problem), "warning" if theme else "error"))
+        if theme is None:
+            return
+        box.addWidget(self._preview(theme))
+        box.addWidget(
+            rich(
+                "<small>On a 1920×1080 frame, and beside it at full size: the first player "
+                "viewed, the second talking. "
+                "<i>Still</i> on an episode's page shows it on the real picture.</small>"
+            )
+        )
+        box.addSpacing(8)
+        box.addWidget(QLabel("<b>Players</b>, in the overlay's order"))
+        box.addWidget(self._players(theme))
+        box.addSpacing(8)
+        box.addWidget(QLabel("<b>Everything else</b>, in the order it's used"))
+        box.addWidget(
+            table(["Key", "Value", "Default"], [list(r) for r in steps.theme_rows(theme)])
+        )
+
+    def _preview(self, theme: Theme) -> QWidget:
+        """The overlay drawn from the theme, placed on a plain 1920×1080 frame."""
+        from . import render  # skia; only when this page is shown
+
+        try:
+            lay = render.layout(theme, 1920, 1080)
+            painter = render.Painter(theme, lay)
+        except VoiceError as e:
+            return message(escape(str(e)), "error")
+        n = len(theme.players)
+        talk = tuple(0.7 * (i == min(1, n - 1)) for i in range(n))
+        sky = np.linspace((150, 120, 90), (70, 80, 60), 1080).astype(np.uint8)  # BGR, top to bottom
+        frame = np.empty((1080, 1920, 4), np.uint8)
+        frame[..., :3], frame[..., 3] = sky[:, None, :], 255
+        x, y, _, _ = render.placement(theme, lay, 1920, 1080)
+        render.over(frame, painter.draw(1.0, -1, 0, 1.0, talk, talk), x, y)
+
+        def picture(pixels: np.ndarray, width: int | None = None) -> QLabel:
+            h, w = pixels.shape[:2]
+            pixels = np.ascontiguousarray(pixels)
+            image = QImage(pixels.data, w, h, w * 4, QImage.Format.Format_ARGB32).copy()
+            pixmap = QPixmap.fromImage(image)
+            if width:
+                pixmap = pixmap.scaledToWidth(width, Qt.TransformationMode.SmoothTransformation)
+            label = QLabel()
+            label.setPixmap(pixmap)
+            label.setAlignment(Qt.AlignmentFlag.AlignTop)
+            return label
+
+        row = QWidget()
+        both = QHBoxLayout(row)
+        both.setContentsMargins(0, 0, 0, 0)
+        both.addWidget(picture(frame, 640))  # where it sits
+        box = lay.panel.makeOutset(lay.inset, lay.inset)  # the panel and its shadow
+        top, left = max(round(y + box.top()), 0), max(round(x + box.left()), 0)
+        both.addWidget(  # how it looks, 1:1
+            picture(frame[top : round(y + box.bottom()), left : round(x + box.right())])
+        )
+        both.addStretch(1)
+        return row
+
+    def _players(self, theme: Theme) -> QTableWidget:
+        from .render import on_colour
+
+        rows = [
+            [
+                p.name,
+                "#{:02x}{:02x}{:02x}".format(*p.colour),
+                p.avatar.name if p.avatar else "(a tile with the initial)",
+                p.voice_track,
+                ", ".join(p.source) or "(the voice track's files)",
+            ]
+            for p in theme.players
+        ]
+        view = table(["Name", "Colour", "Avatar", "Voice track", "View from"], rows)
+        view.setIconSize(QSize(28, 28))
+        for r, p in enumerate(theme.players):
+            if p.avatar:
+                view.item(r, 0).setIcon(QIcon(str(p.avatar)))
+            view.item(r, 1).setBackground(QColor(*p.colour))
+            view.item(r, 1).setForeground(QColor(*on_colour(p.colour)))
+        view.resizeColumnsToContents()
+        fit(view, len(rows))
+        view.setMaximumWidth(view.horizontalHeader().length() + 2 * view.frameWidth())
+        return view
+
+    def _crew_settings(self, box: QVBoxLayout) -> None:
+        self._heading(
+            box,
+            "Crew file",
+            "The show's settings, shared by every game: where old sessions are archived, each "
+            "game's software lines for a new session's notes, and the mixer levels New "
+            "session and Sync give the tracks they create. Edit it in your text editor; this "
+            "page reads it again whenever you come back to the window.",
+        )
+        path = self.crew_path()
+        if not path.is_file():
+            box.addWidget(
+                message(
+                    "No crew file yet: new tracks start at 0 dB, centred, and New session "
+                    "offers no software lists. <b>Create kuliss.toml</b> puts a copy of the "
+                    f"commented example in {escape(str(path.parent))} and opens it.",
+                    "info",
+                )
+            )
+            self._buttons(box, ("Create kuliss.toml", lambda: self.create("crew", path), True))
+            return
+        box.addWidget(rich(f"{escape(str(path))}<br>{link(path, 'Open it in the editor')}"))
+        crew, problems = steps.read_crew(path)
+        for problem in problems:
+            box.addWidget(message(escape(problem), "warning" if crew else "error"))
+        if crew is None:
+            return
+        if crew.archive and not crew.archive.is_dir():
+            box.addWidget(
+                message(
+                    f"The archive {escape(str(crew.archive))} isn't reachable (a drive not "
+                    "plugged in?): New session can't count the sessions there.",
+                    "warning",
+                )
+            )
+        box.addWidget(table(["Key", "Value", "Default"], [list(r) for r in steps.crew_rows(crew)]))
+        box.addSpacing(8)
+        box.addWidget(QLabel("<b>Software</b>, offered by New session"))
+        if crew.software:
+            box.addWidget(
+                rich(
+                    "".join(
+                        f"<p><b>{escape(game)}</b>{' (the default)' if not k else ''}</p>"
+                        f"<pre>{escape(chr(10).join(lines))}</pre>"
+                        for k, (game, lines) in enumerate(crew.software.items())
+                    )
+                )
+            )
+        else:
+            box.addWidget(
+                message(
+                    "No games listed: New session writes only OBS, Kdenlive and kuliss.", "info"
+                )
+            )
+        box.addSpacing(8)
+        box.addWidget(QLabel("<b>Voices</b>: each player's Voice track, when Sync creates it"))
+        if crew.voice:
+            box.addWidget(
+                table(
+                    ["Player", "Gain (dB)", "Pan (0 left, 1 right)", "Contrast"],
+                    [
+                        [n, f"{m.gain:g}", f"{m.pan:g}", str(m.contrast or "–")]
+                        for n, m in crew.voice.items()
+                    ],
+                )
+            )
+        else:
+            box.addWidget(
+                message("No voices listed: every Voice track starts at 0 dB, centred.", "info")
+            )
+
+    def create(self, kind: str, target: Path) -> None:
+        """A theme or crew file from the commented example, opened in the editor."""
+        try:
+            made = steps.create_from_example(kind, target)
+        except VoiceError as e:
+            self.error(str(e))
+            return
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(made)))
+        self.refresh()
 
     def _links(self, s: steps.State | None) -> str:
         html = ""
@@ -820,6 +1033,9 @@ class Window(QMainWindow):
         def work(progress):
             from . import finish
 
+            if mode == "still":
+                still = finish.still(project)
+                return [steps.preview_report(still)], still
             analysis = finish.analyse(project)
             lines = steps.analysis_report(analysis)
             if mode == "analyse":

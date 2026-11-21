@@ -174,7 +174,7 @@ def still(project: str | Path, theme_file: str | Path | None = None) -> Path:
 
     states = [talks(-1), talks(other), talks(who)]
     x, y, _, _ = render.placement(theme, painter.lay, w, h)
-    sheet = np.concatenate([_over(background.copy(), s, x, y) for s in states])
+    sheet = np.concatenate([render.over(background.copy(), s, x, y) for s in states])
     out = path.with_name(path.stem + "-overlay-still.png")
     png = bytes(skia.Image.fromarray(sheet, colorType=skia.kBGRA_8888_ColorType).encodeToData())
     try:
@@ -197,20 +197,6 @@ def _grab(resource: str, seconds: float, w: int, h: int) -> np.ndarray | None:
             return None if frame is None else frame.to_ndarray(format="bgra", width=w, height=h)
     except (av.FFmpegError, IndexError, OSError):
         return None
-
-
-def _over(background: np.ndarray, overlay: np.ndarray, x: int, y: int) -> np.ndarray:
-    """overlay (unpremultiplied BGRA) blended onto background with its corner at (x, y)."""
-    h, w = background.shape[:2]
-    oh, ow = overlay.shape[:2]
-    x0, y0, x1, y1 = max(x, 0), max(y, 0), min(x + ow, w), min(y + oh, h)
-    if x0 >= x1 or y0 >= y1:
-        return background
-    part = overlay[y0 - y : y1 - y, x0 - x : x1 - x].astype(np.float32)
-    a = part[..., 3:4] / 255
-    under = background[y0:y1, x0:x1, :3].astype(np.float32)
-    background[y0:y1, x0:x1, :3] = (part[..., :3] * a + under * (1 - a)).round().astype(np.uint8)
-    return background
 
 
 def render_overlay(
