@@ -4,10 +4,12 @@ the intro and outro, added to a Kdenlive episode project.
     analysis = analyse(project)     # reads the project, finds views and speech
     overlay = render_overlay(analysis)   # draws <project>-overlay.mkv
     backup = apply(analysis, overlay)    # patches the project in place
+    still(project)                       # or only a picture of the theme, in a second
 
 The theme is found next to the project or in any folder above it.
 """
 
+import logging
 import math
 import time
 from collections.abc import Callable
@@ -17,10 +19,14 @@ from pathlib import Path
 
 import av
 import numpy as np
+import skia
 
 from . import render, timeline, vad
 from .config import BOOKENDS, Player, Theme, load_theme, nearest_theme
 from .errors import die
+from .files import write_atomic
+
+log = logging.getLogger(__name__)
 
 MIN_SPAN = 1.0  # s; views shorter than this (flash cuts) don't count as a switch
 
@@ -68,13 +74,12 @@ def sound_frames(path: Path, fps: float) -> int:
         die(f"cannot read {path}")
 
 
-def analyse(project: str | Path, theme_file: str | Path | None = None) -> Analysis:
-    """Read the project and work out who is on screen and who talks. Writes nothing."""
+def _load(project: str | Path, theme_file: str | Path | None):
+    """The project, its theme cut to the players present, and the painter."""
     path = Path(project).expanduser().resolve()
     theme = load_theme(Path(theme_file).expanduser().resolve() if theme_file else find_theme(path))
     proj = timeline.load(path)
     mtime = path.stat().st_mtime_ns
-    fps = proj.fps
     here = timeline.present(proj, theme.players)
     if not here:
         die("no player has clips on their voice track")
@@ -83,7 +88,13 @@ def analyse(project: str | Path, theme_file: str | Path | None = None) -> Analys
     players = timeline.with_sources(proj, theme.players)
     # load every image and font now: a bad asset should fail in a second, not after the analysis
     painter = render.Painter(theme, render.layout(theme, proj.width, proj.height))
+    return path, mtime, proj, theme, players, absent, painter
 
+
+def analyse(project: str | Path, theme_file: str | Path | None = None) -> Analysis:
+    """Read the project and work out who is on screen and who talks. Writes nothing."""
+    path, mtime, proj, theme, players, absent, painter = _load(project, theme_file)
+    fps = proj.fps
     view = timeline.view_map(proj, players)
     if (view < 0).all():
         clips = sorted(
@@ -125,6 +136,81 @@ def analyse(project: str | Path, theme_file: str | Path | None = None) -> Analys
         talking,
         time.monotonic() - t0,
     )
+
+
+def still(project: str | Path, theme_file: str | Path | None = None) -> Path:
+    """A picture of the overlay over a frame of the project's first view, three times:
+    nobody talks; someone talks; the viewed player talks. No speech analysis and no
+    encoding, so a theme can be tried in a second. Writes <project>-overlay-still.png."""
+    path, _, proj, theme, players, _, painter = _load(project, theme_file)
+    w, h = proj.width, proj.height
+    background = np.full((h, w, 4), (90, 90, 90, 255), np.uint8)  # when no frame can be read
+    view = timeline.view_map(proj, players)
+    shown = np.flatnonzero(view >= 0)
+    who = 0  # whose view the frame shows
+    if shown.size:  # the middle of the first view: its start may still be black
+        start = int(shown[0])
+        who = int(view[start])
+        later = view[start:] != who
+        f = start + (int(np.argmax(later)) if later.any() else later.size) // 2
+        e = next(
+            e
+            for t in reversed(proj.tracks)  # topmost first: the clip view_map chose
+            if not t.audio and not t.hidden
+            for e in t.entries
+            if e.start <= f < e.start + e.length
+            and timeline.player_of(e.resource, players) is not None
+        )
+        grabbed = _grab(e.resource, (e.src_in + f - e.start) / proj.fps, w, h)
+        if grabbed is None:
+            log.warning("could not read a frame of %s; the still has a grey background", e.resource)
+        else:
+            background = grabbed
+    other = (who + 1) % len(players)  # who itself when alone
+
+    def talks(i: int) -> np.ndarray:  # only player i talks, at a typical voice level
+        level = tuple(0.7 * (j == i) for j in range(len(players)))
+        return painter.draw(1.0, -1, who, 1.0, level, level)
+
+    states = [talks(-1), talks(other), talks(who)]
+    x, y, _, _ = render.placement(theme, painter.lay, w, h)
+    sheet = np.concatenate([_over(background.copy(), s, x, y) for s in states])
+    out = path.with_name(path.stem + "-overlay-still.png")
+    png = bytes(skia.Image.fromarray(sheet, colorType=skia.kBGRA_8888_ColorType).encodeToData())
+    try:
+        write_atomic(out, lambda tmp: tmp.write_bytes(png))
+    except OSError as e:
+        die(f"cannot write {out}: {e.strerror}")
+    return out
+
+
+def _grab(resource: str, seconds: float, w: int, h: int) -> np.ndarray | None:
+    """One BGRA frame of a video file at or just after `seconds`, scaled to w x h."""
+    try:
+        with av.open(resource) as c:
+            st = c.streams.video[0]
+            c.seek(int(seconds / st.time_base), stream=st)
+            frame = None
+            for frame in c.decode(st):
+                if frame.pts is not None and frame.pts * frame.time_base >= seconds:
+                    break
+            return None if frame is None else frame.to_ndarray(format="bgra", width=w, height=h)
+    except (av.FFmpegError, IndexError, OSError):
+        return None
+
+
+def _over(background: np.ndarray, overlay: np.ndarray, x: int, y: int) -> np.ndarray:
+    """overlay (unpremultiplied BGRA) blended onto background with its corner at (x, y)."""
+    h, w = background.shape[:2]
+    oh, ow = overlay.shape[:2]
+    x0, y0, x1, y1 = max(x, 0), max(y, 0), min(x + ow, w), min(y + oh, h)
+    if x0 >= x1 or y0 >= y1:
+        return background
+    part = overlay[y0 - y : y1 - y, x0 - x : x1 - x].astype(np.float32)
+    a = part[..., 3:4] / 255
+    under = background[y0:y1, x0:x1, :3].astype(np.float32)
+    background[y0:y1, x0:x1, :3] = (part[..., :3] * a + under * (1 - a)).round().astype(np.uint8)
+    return background
 
 
 def render_overlay(

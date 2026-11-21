@@ -508,6 +508,34 @@ def test_edge_centred_positions(tmp_path, position, orientation):
         assert edge == (m - 7 if position == "top" else 1080 - m - 7)
 
 
+def test_still_draws_the_overlay_over_a_frame_of_the_first_view(tmp_path, capsys):
+    import av
+
+    video = tmp_path / "2025-08-23_h.mkv"
+    with av.open(str(video), "w") as c:
+        st = c.add_stream("ffv1", rate=10)
+        st.width, st.height, st.pix_fmt = 64, 36, "bgra"
+        for _ in range(20):
+            frame = av.VideoFrame.from_ndarray(
+                np.full((36, 64, 4), (0, 200, 0, 255), np.uint8), "bgra"
+            )
+            c.mux(st.encode(frame))
+        c.mux(st.encode())
+    project = tmp_path / "ep.kdenlive"
+    project.write_text(PROJECT.replace("/src/2025-08-23_h.mkv", str(video)))
+    theme = write_theme(tmp_path)
+    theme.write_text(theme.read_text().replace("Kenneth-the-long", "Henrik"))
+
+    assert cli.main(["finish", str(project), "--still"]) == 0
+    out = tmp_path / "ep-overlay-still.png"
+    assert str(out) in capsys.readouterr().out
+    sheet = skia.Image.open(str(out)).toarray(colorType=skia.kBGRA_8888_ColorType)
+    assert sheet.shape[:2] == (3 * 1080, 1920)  # three states, one frame each
+    assert tuple(sheet[1000, 1800, :3]) == (0, 200, 0)  # the frame, away from the overlay
+    assert tuple(sheet[60, 60, :3]) != (0, 200, 0)  # the panel, top-left by default
+    assert (sheet[:1080] != sheet[1080:2160]).any()  # nobody talks / someone talks
+
+
 def test_preview_must_be_positive():
     assert cli.positive("1.5") == 1.5
     for bad in ("0", "-3", "abc"):

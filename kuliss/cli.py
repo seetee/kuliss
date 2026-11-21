@@ -41,6 +41,9 @@ def _progress(done: int, total: int) -> None:
 def _finish(args: argparse.Namespace) -> int:
     from . import finish
 
+    if args.still:
+        print(preview_report(finish.still(args.project, args.theme)))
+        return 0
     analysis = finish.analyse(args.project, args.theme)
     print("\n".join(analysis_report(analysis)))
     if args.dry_run:
@@ -199,6 +202,12 @@ def parser() -> argparse.ArgumentParser:
         type=positive,
         metavar="SECS",
         help="render only the first SECS to PROJECT-overlay-preview.mkv; project untouched",
+    )
+    p.add_argument(
+        "--still",
+        action="store_true",
+        help="draw the overlay over one frame, in three states, to PROJECT-overlay-still.png "
+        "(a second; for trying a theme); project untouched",
     )
     p.set_defaults(run=_finish)
 

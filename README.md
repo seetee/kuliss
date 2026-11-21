@@ -189,6 +189,7 @@ With `show_view = false` in the theme it shows only who talks: same-size avatars
 |---|---|
 | `kuliss finish P.kdenlive --dry-run` | Reports switches and screen and talk time per player. Writes nothing. |
 | `kuliss finish P.kdenlive --preview 90` | Renders the first 90 s to `P-overlay-preview.mkv`. The project is untouched. |
+| `kuliss finish P.kdenlive --still` | Draws the overlay over one frame of the episode, as silent, someone talking and the viewed player talking, to `P-overlay-still.png`. Takes a second; the project is untouched. |
 | `kuliss finish P.kdenlive` | Renders the overlay and **updates the project**. Run it again after every re-edit. |
 | `--theme path/to/theme.toml` | Uses this theme instead of the nearest `theme.toml`. |
 
@@ -294,7 +295,7 @@ Each game's look is a `theme.toml` in its folder. Start from [`theme.example.tom
 1. Copy `theme.example.toml` into the game's folder as `theme.toml`.
 2. Set `assets = "../_assets"`, so the other paths are relative to the shared folder.
 3. Add a `[[player]]` per player (1–8) with `name`, `colour` (`"#rrggbb"`) and `avatar` (left out: a tile in the player's colour with their initial, handy for a guest).
-4. Run `kuliss finish P.kdenlive --preview 30` on a copy of an episode, look, adjust, repeat.
+4. Run `kuliss finish P.kdenlive --still` on an episode, look at the picture, adjust, repeat. Check the motion once with `--preview 30` on a copy.
 
 The main keys:
 
