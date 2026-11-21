@@ -28,7 +28,7 @@ uv run --extra gui kuliss gui                   # the session window (PySide6 is
 uv run pytest                                   # single test: -k <name>; no media needed
 ```
 
-Test end to end only on a **copy** of a real project or session directory. The user's projects and Kdenlive backups live under `~/documents/samkvam.online/…` and `~/.local/share/kdenlive/.backup/`. CI (`.github/workflows/test.yml`) runs pytest on 3.12/3.14 (Linux and Windows) from `uv.lock`, once more with `--resolution lowest-direct`, then `uv run ruff check` and `uv run ruff format --check` (rules in `pyproject.toml`: E, F, UP, B, SIM, I; line-length 100; E741 enforced, so no single-letter `l`). Run `uv run ruff format` before committing. The actions are pinned to commit SHAs (tag in a comment); bump both together. No 3.15 job yet: `silero-vad-lite` 0.4.0 has no cp315 wheel (checked 2026-11-18).
+Test end to end only on a **copy** of a real project or session directory. The user's projects live in their show folder (README, "Where files live"), Kdenlive's backups in `~/.local/share/kdenlive/.backup/`. CI (`.github/workflows/test.yml`) runs pytest on 3.12/3.14 (Linux and Windows) from `uv.lock`, once more with `--resolution lowest-direct`, then `uv run ruff check` and `uv run ruff format --check` (rules in `pyproject.toml`: E, F, UP, B, SIM, I; line-length 100; E741 enforced, so no single-letter `l`). Run `uv run ruff format` before committing. The actions are pinned to commit SHAs (tag in a comment); bump both together. No 3.15 job yet: `silero-vad-lite` 0.4.0 has no cp315 wheel (checked 2026-11-18).
 
 ## `kuliss finish`
 
@@ -89,7 +89,7 @@ Pipeline:
 
 **Idempotency and non-destructiveness are the core contract**, and both are covered by tests — run the suite after any change to the merge logic. Rules:
 
-- Script-managed lines only: `* ` bullets in a `####` section are replaced **only when that section has incoming notes this run**; the tally lines (`Joel:`/`Robin:`/`Henrik:`/`Kenneth:`) and the `* Kdenlive …` line are always script-managed. Everything else the user wrote must round-trip unchanged.
+- Script-managed lines only: `* ` bullets in a `####` section are replaced **only when that section has incoming notes this run**; the tally lines (`<name>:`, one per `TALLY_NAMES` entry) and the `* Kdenlive …` line are always script-managed. Everything else the user wrote must round-trip unchanged.
 - Running twice must produce byte-identical output (`test_idempotent`).
 - Heading levels are load-bearing: `## ` top-level sections, `### <episode-dir-name>`, `#### <section>` — section names must exactly match the headings typed in Kdenlive's notes panel.
 
@@ -97,7 +97,7 @@ Pipeline:
 
 `session.py` places `sources/*.mkv` on the session project. Unlike `finish`, it matches by file name and **stream title**, because that is the crew's recording standard (decided 2026-10-30): `<date>_<initial>.mkv`, initials from `notes.TALLY_NAMES`, audio titled `Full mix` (unused backup), `Game audio`, `Voice audio`, `Comms`. `TRACKS` maps them to track names: `<I> Comms`, `<Name> Voice`, `<I> Game`, video `<Name> Game`.
 - `sync.py` (Kdenlive-free): a 100 Hz log-loudness envelope of the first 30 min (via `vad.decode`), FFT cross-correlation. `offset` measures both directions (my voice in your Comms, yours in mine) and averages, cancelling the call delay; confidence (peak/std) below `MIN_CONFIDENCE` is dropped, and both weak is an error. Session 28's real matches scored 23–35.
-- Guests: a file suffix of more than one letter that isn't a crew name (`_jesper.mkv`) is a guest; `TRACKS` then uses their name for `{i}` too, and their tracks are created like the crew's. A crew member's full name (`_kenneth.mkv`) maps to the crew. Guests are not added to `TALLY_NAMES`, which also drives the tally lines.
+- Guests: a file suffix of more than one letter that isn't a crew name (`_alice.mkv`) is a guest; `TRACKS` then uses their name for `{i}` too, and their tracks are created like the crew's. A crew member's full name (lower case, as in `TALLY_NAMES`) maps to the crew. Guests are not added to `TALLY_NAMES`, which also drives the tally lines.
 - `finish` drops players with no voice clips (`timeline.present`), so whoever missed a session gets no avatar.
 - Forgiving per recording (2026-11-19): a missing stream or video only warns and gets no track; without `Comms` (or the reference's) `sync.offset` uses the one direction left and warns; an unreadable or unmatched file, or one with neither Voice nor Comms, is skipped with a warning (`SyncResult.left_out`). The reference is the first recording with both. Only the safety checks below and "no recordings at all" still stop the run.
 - After placing, `timeline.group` writes Kdenlive "Normal" groups (as Ctrl+G does) into `sequenceproperties.groups`: all Voice clips, and per player the game video with its Game audio. Leaves are `<track index without black>:<start frame>:-1`.
@@ -113,4 +113,4 @@ Pipeline:
 
 ## Verifying against real Kdenlive
 
-`melt` is not on PATH. Extract it from the AppImage (`~/bin/gearlever_kdenlive_*.appimage --appimage-extract`), source `apprun-hooks/craft-runenv-hook.sh`, and set `LD_LIBRARY_PATH=squashfs-root/usr/lib`. To render the timeline rather than `main_bin`, point the root `producer` attribute at the `kdenlive:projectTractor` tractor. `AppRun --render P.kdenlive out.mp4` (with `QT_QPA_PLATFORM=offscreen`) loads the project through Kdenlive's own document model.
+`melt` is not on PATH. Extract it from the AppImage (`<Kdenlive AppImage> --appimage-extract`), source `apprun-hooks/craft-runenv-hook.sh`, and set `LD_LIBRARY_PATH=squashfs-root/usr/lib`. To render the timeline rather than `main_bin`, point the root `producer` attribute at the `kdenlive:projectTractor` tractor. `AppRun --render P.kdenlive out.mp4` (with `QT_QPA_PLATFORM=offscreen`) loads the project through Kdenlive's own document model.

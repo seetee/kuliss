@@ -207,18 +207,18 @@ def test_theme_assets_folder_is_set_once(tmp_path, monkeypatch):
 
     assets = tmp_path / "_assets"
     (assets / "avatars").mkdir(parents=True)
-    for name in ("swosh.flac", "avatars/kenneth.png"):
+    for name in ("swosh.flac", "avatars/alice.png"):
         (assets / name).touch()
     (tmp_path / "po3").mkdir()
     theme = tmp_path / "po3" / "theme.toml"
     theme.write_text(
         'assets = "../_assets"\nsound = "swosh.flac"\n'
-        '[[player]]\nname = "Kenneth"\ncolour = "#c83c5a"\navatar = "avatars/kenneth.png"\n',
+        '[[player]]\nname = "Alice"\ncolour = "#c83c5a"\navatar = "avatars/alice.png"\n',
         encoding="utf-8",
     )
     loaded = load_theme(theme)
     assert loaded.sound == (assets / "swosh.flac").resolve()
-    assert loaded.players[0].avatar == (assets / "avatars" / "kenneth.png").resolve()
+    assert loaded.players[0].avatar == (assets / "avatars" / "alice.png").resolve()
     monkeypatch.setenv("HOME", str(tmp_path))  # ~ expands before the join
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
     theme.write_text(theme.read_text(encoding="utf-8").replace("../_assets", "~/_assets"))

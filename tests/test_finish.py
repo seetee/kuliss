@@ -17,7 +17,7 @@ from kuliss.errors import VoiceError
 
 PLAYERS = tuple(
     Player(n, (200, 60, 90), Path("x.png"), (f"*_{n[0].lower()}.mkv",), n)
-    for n in ("Henrik", "Kenneth")
+    for n in ("Carol", "Alice")
 )
 
 
@@ -42,20 +42,20 @@ def track(tid, name, audio, body, hide=None):
     )
 
 
-# frames at 10 fps: Kenneth's clip sits on the track named "Henrik" (as in avsnitt217)
+# frames at 10 fps: Alice's clip sits on the track named "Carol" (as in avsnitt217)
 PROJECT = f"""<?xml version='1.0' encoding='utf-8'?>
 <mlt LC_NUMERIC="C" producer="main_bin" version="7.40.0">
  <profile frame_rate_num="10" frame_rate_den="1" width="1920" height="1080"/>
- {chain("c_h", 1, "/src/2025-08-23_h.mkv", 2)}
- {chain("c_k", 2, "/src/2025-08-23_k.mkv", 2)}
+ {chain("c_h", 1, "/src/2025-08-23_c.mkv", 2)}
+ {chain("c_k", 2, "/src/2025-08-23_a.mkv", 2)}
  {chain("c_intro", 3, "/a/intro.mov")}
  {chain("c_card", 4, "/a/card.png", service="qimage")}
  <producer id="black"><property name="mlt_service">color</property></producer>
- {track("t_voice", "Henrik", True, '<entry producer="c_h" in="100" out="299"/>')}
+ {track("t_voice", "Carol", True, '<entry producer="c_h" in="100" out="299"/>')}
  {
     track(
         "t_vh",
-        "Henrik",
+        "Carol",
         False,
         '<entry producer="c_h" in="0" out="99"/><entry producer="c_k" in="0" out="49"/>'
         '<entry producer="c_h" in="0" out="3"/><entry producer="c_k" in="0" out="45"/>',
@@ -100,14 +100,14 @@ def test_parse_and_view(tmp_path):
     proj = load(tmp_path)
     assert (proj.fps, proj.length) == (10, 200)
     assert [(t.name, t.audio) for t in proj.tracks] == [
-        ("Henrik", True),
-        ("Henrik", False),
+        ("Carol", True),
+        ("Carol", False),
         ("Assets", False),
     ]
     view = T.view_map(proj, PLAYERS)
     assert (view[:100] == 0).all()  # a full-screen clip that is no player's is ignored
     assert (view[100:150] == 1).all()  # identity comes from the clip, not the track name
-    spans = T.view_spans(view, 10)  # the 4-frame Henrik flash is absorbed
+    spans = T.view_spans(view, 10)  # the 4-frame Carol flash is absorbed
     assert spans == [(0, 100, 0), (100, 200, 1)]
     assert T.cuts(spans) == [100]  # no swoosh for the first view
     assert [(e.start, e.src_in, e.audio_index) for e in T.voice_entries(proj, PLAYERS[0])] == [
@@ -119,7 +119,7 @@ def test_source_defaults_to_the_voice_tracks_files(tmp_path):
     proj = load(tmp_path)
     bare = (replace(PLAYERS[0], source=()), PLAYERS[1])
     players = T.with_sources(proj, bare)
-    assert players[0].source == ("2025-08-23_h.mkv",)
+    assert players[0].source == ("2025-08-23_c.mkv",)
     assert (T.view_map(proj, players) == T.view_map(proj, PLAYERS)).all()
 
 
@@ -328,7 +328,7 @@ def write_theme(tmp_path, extra="", player_extra=""):
     avatar.makeImageSnapshot().save(str(tmp_path / "a.png"))
     theme = tmp_path / "theme.toml"
     theme.write_text(
-        f'sound = "s.flac"\n{extra}\n[[player]]\nname = "Kenneth-the-long"\n'
+        f'sound = "s.flac"\n{extra}\n[[player]]\nname = "Alexandra-the-long"\n'
         f'colour = "#c83c5a"\navatar = "a.png"\n{player_extra}\n'
     )
     return theme
@@ -352,10 +352,10 @@ def test_bad_theme_values_are_clear_errors(tmp_path, extra, message):
 
 def test_theme_warns_about_typos_and_takes_source_lists(tmp_path, caplog):
     theme = load_theme(
-        write_theme(tmp_path, 'orientaton = "vertical"', 'source = ["*_k.mkv", "*_k2.mkv"]')
+        write_theme(tmp_path, 'orientaton = "vertical"', 'source = ["*_a.mkv", "*_a2.mkv"]')
     )
     assert "unknown key 'orientaton'" in caplog.text
-    assert theme.orientation == "horizontal" and theme.players[0].source == ("*_k.mkv", "*_k2.mkv")
+    assert theme.orientation == "horizontal" and theme.players[0].source == ("*_a.mkv", "*_a2.mkv")
 
 
 def test_unreadable_assets_are_clear_errors(tmp_path):
@@ -376,7 +376,7 @@ def test_long_name_fits_inside_the_panel(tmp_path, orientation, avatars):
     extra = f'orientation = "{orientation}"\navatars = {avatars}'
     theme = load_theme(write_theme(tmp_path, extra, SECOND))
     lay = render.layout(theme, 1920, 1080)
-    width = render.load_font(theme, lay.font_size).measureText("Kenneth-the-long") + lay.label_h
+    width = render.load_font(theme, lay.font_size).measureText("Alexandra-the-long") + lay.label_h
     assert width + 8 <= lay.panel.width() <= lay.W
     (ax, ay), (bx, by) = lay.labels
     if orientation == "horizontal":
@@ -511,7 +511,7 @@ def test_edge_centred_positions(tmp_path, position, orientation):
 def test_still_draws_the_overlay_over_a_frame_of_the_first_view(tmp_path, capsys):
     import av
 
-    video = tmp_path / "2025-08-23_h.mkv"
+    video = tmp_path / "2025-08-23_c.mkv"
     with av.open(str(video), "w") as c:
         st = c.add_stream("ffv1", rate=10)
         st.width, st.height, st.pix_fmt = 64, 36, "bgra"
@@ -522,9 +522,9 @@ def test_still_draws_the_overlay_over_a_frame_of_the_first_view(tmp_path, capsys
             c.mux(st.encode(frame))
         c.mux(st.encode())
     project = tmp_path / "ep.kdenlive"
-    project.write_text(PROJECT.replace("/src/2025-08-23_h.mkv", str(video)))
+    project.write_text(PROJECT.replace("/src/2025-08-23_c.mkv", str(video)))
     theme = write_theme(tmp_path)
-    theme.write_text(theme.read_text().replace("Kenneth-the-long", "Henrik"))
+    theme.write_text(theme.read_text().replace("Alexandra-the-long", "Carol"))
 
     assert cli.main(["finish", str(project), "--still"]) == 0
     out = tmp_path / "ep-overlay-still.png"
@@ -546,7 +546,7 @@ def test_preview_must_be_positive():
 def test_voice_track_may_carry_a_voice_suffix(tmp_path):
     """The session template names voice tracks "<Player> Voice"."""
     p = tmp_path / "ep.kdenlive"
-    p.write_text(PROJECT.replace(">Henrik</property>", ">Henrik Voice</property>", 1))
+    p.write_text(PROJECT.replace(">Carol</property>", ">Carol Voice</property>", 1))
     assert len(T.voice_entries(T.load(p), PLAYERS[0])) == 1
 
 
@@ -561,12 +561,12 @@ def test_absent_player_is_left_out(tmp_path):
 def test_relative_sources_resolve_against_the_project_not_the_cwd(tmp_path, monkeypatch):
     """Kdenlive saves paths below the project folder relative to the root attribute."""
     (tmp_path / "sources").mkdir()
-    (tmp_path / "sources" / "2025-08-23_h.mkv").write_bytes(b"x")
+    (tmp_path / "sources" / "2025-08-23_c.mkv").write_bytes(b"x")
     p = tmp_path / "ep.kdenlive"
-    p.write_text(PROJECT.replace("/src/2025-08-23_h.mkv", "sources/2025-08-23_h.mkv"))
+    p.write_text(PROJECT.replace("/src/2025-08-23_c.mkv", "sources/2025-08-23_c.mkv"))
     monkeypatch.chdir(tmp_path.parent)
     voice = T.voice_entries(T.load(p), PLAYERS[0])
-    assert voice[0].resource == str(tmp_path / "sources" / "2025-08-23_h.mkv")
+    assert voice[0].resource == str(tmp_path / "sources" / "2025-08-23_c.mkv")
 
 
 def test_rerun_keeps_an_overlay_the_editor_moved(tmp_path):
@@ -621,8 +621,8 @@ def test_intro_outro_and_sounds_share_the_assets_tracks_with_the_editor(tmp_path
     # the video Assets track is the editor's and is used as it is; the audio one is new
     assert [(t.name, t.audio) for t in proj.tracks] == [
         ("Assets", True),
-        ("Henrik", True),
-        ("Henrik", False),
+        ("Carol", True),
+        ("Carol", False),
         ("Assets", False),
         ("kuliss", False),
     ]

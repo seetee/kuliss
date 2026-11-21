@@ -2,7 +2,7 @@
 # folder above it (e.g. the season folder), or pass --theme.
 # Paths are relative to this file, or to `assets` when it is set.
 # assets = "../_assets"         # the folder every other path is relative to: set it once,
-#                               # then write "avatars/kenneth.png" instead of "../_assets/avatars/…"
+#                               # then write "avatars/alice.png" instead of "../_assets/avatars/…"
 
 # Image, sound and video formats and sizes: see "Themes" in README.md.
 sound    = "../_assets/namecard/60003__qubodup__loud-swosh-16.flac"  # plays on every view switch
@@ -30,9 +30,9 @@ sound    = "../_assets/namecard/60003__qubodup__loud-swosh-16.flac"  # plays on 
 # video tracks, beside your own clips there (one of ours that would overlap yours is left out):
 # the intro music from the top, ducked where the first voice clip starts; the intro video half
 # a second in; the outro card over the last 20 s; the outro music from 17 s before the card.
-# intro_audio = "../_assets/episode-media/samkväm-intro-audio.mp3"
-# intro_video = "../_assets/episode-media/samkväm-intro-video.mov"
-# outro_audio = "../_assets/episode-media/samkväm-outro-audio.mp3"
+# intro_audio = "../_assets/episode-media/intro-audio.mp3"
+# intro_video = "../_assets/episode-media/intro-video.mov"
+# outro_audio = "../_assets/episode-media/outro-audio.mp3"
 # outro_image = "../_assets/design-system/outro-overlay.png"
 
 # 1-8 players. `voice_track` is the Kdenlive audio track with their voice
@@ -40,25 +40,25 @@ sound    = "../_assets/namecard/60003__qubodup__loud-swosh-16.flac"  # plays on 
 # track count as the player's view, whatever track they sit on; set `source`
 # (a file-name pattern) only when their view comes from another file.
 [[player]]
-name   = "Henrik"
+name   = "Alice"
 colour = "#e0a030"
-avatar = "avatars/henrik.png"   # a Minecraft head, an icon, anything square;
+avatar = "avatars/alice.png"    # a Minecraft head, an icon, anything square;
                                 # left out: a tile in the player's colour with their initial
 
 [[player]]
-name   = "Joel"
+name   = "Bob"
 colour = "#2ea043"
-avatar = "avatars/joel.png"
+avatar = "avatars/bob.png"
 
 [[player]]
-name   = "Kenneth"
+name   = "Carol"
 colour = "#c83c5a"
-avatar = "avatars/kenneth.png"
+avatar = "avatars/carol.png"
 
 [[player]]
-name   = "Robin"
+name   = "Dave"
 colour = "#3884f4"
-avatar = "avatars/robin.png"
-# voice_track = "Robin mic"     # when the audio track has another name
-# source = "*_r.mkv"            # when the view is recorded in another file (or a list:
-#                               # ["*_r.mkv", "*_r2.mkv"])
+avatar = "avatars/dave.png"
+# voice_track = "Dave mic"      # when the audio track has another name
+# source = "*_d.mkv"            # when the view is recorded in another file (or a list:
+#                               # ["*_d.mkv", "*_d2.mkv"])

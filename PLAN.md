@@ -109,8 +109,10 @@ Decided:
 
 ## Before publishing
 
-- [ ] Privacy: use generic player names and paths in `CLAUDE.md`, `theme.example.toml` and the
-      tests, instead of the crew's names and `~/documents/samkvam.online`/`~/bin/gearlever_*`.
+- [x] Privacy (2026-11-21): generic names and paths in `CLAUDE.md`, the README, the example
+      theme and the finish/GUI tests. Kept on purpose: the crew in `notes.TALLY_NAMES` (it is
+      the behaviour, tested in `test_notes`/`test_sync`) and git history (no rewrite of a
+      public repo).
 
 ## `kuliss gui`: a session checklist window (built 2026-11-19)
 

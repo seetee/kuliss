@@ -27,7 +27,7 @@ You need [uv](https://docs.astral.sh/uv/). It fetches Python 3.12+ and every dep
 
 ```bash
 uv tool install "kuliss[gui] @ git+https://github.com/seetee/kuliss.git"
-kuliss gui ~/documents/samkvam.online/po3
+kuliss gui ~/myshow/mygame
 ```
 
 Update later with `uv tool upgrade kuliss`. Leave out `[gui]` if you only want the commands.
@@ -159,7 +159,7 @@ It listens for each person's voice in the others' `Comms` (the call as they hear
 - **Grouped:** all `Voice` clips form one group, and each player's video forms a group with their `Game` audio. Ungroup with Ctrl+Shift+G to move one alone.
 - **Never over an edit:** it refuses to touch a track that already has clips. Clear them to sync again.
 - **Someone missing?** Sync whoever recorded. The absent player gets no tracks, and `kuliss finish` gives them no avatar.
-- **Guests** name the file after themselves, `<date>_jesper.mkv`, and get `Jesper Comms`, `Jesper Voice` and `Jesper Game` tracks. Add them as a `[[player]]` in the theme for the overlay.
+- **Guests** name the file after themselves, `<date>_alice.mkv`, and get `Alice Comms`, `Alice Voice` and `Alice Game` tracks. Add them as a `[[player]]` in the theme for the overlay.
 
 <details>
 <summary>A recording that doesn't follow the standard</summary>
@@ -330,7 +330,7 @@ The intro and outro timings are Samkväm's, copied from its hand-edited episodes
 | 64 | 580 × 156 | 580 × 140 | 133 × 576 | 133 × 512 | 580 × 68 | 157 × 224 |
 | 96 | 880 × 234 | 880 × 210 | 198 × 864 | 198 × 768 | 880 × 102 | 238 × 336 |
 
-(Measured with Henrik, Joel, Kenneth and Robin in the system font; a row is as wide as four of its longest name.)
+(Measured with four names of 4 to 7 letters in the system font; a row is as wide as four of its longest name.)
 
 A 900 × 350 px backdrop is plenty for the default look; [`backdrop.example.png`](backdrop.example.png) is one to start from.
 
